@@ -44,7 +44,7 @@ export class Music {
   private walk = 7;
   private lastPlayed = 0;
   activity = 0; // 0..1, rises with play
-  layers = { drone: false, celesta: true, harp: false };
+  layers = { drone: false, celesta: true, harp: false, kin: 0 };
   vitality = 0; // world progress 0..1, opens the filter
   night = 0;
   private swellAmt = 0;
@@ -181,6 +181,23 @@ export class Music {
         const idx = (pi >= 0 ? pi : 0) + 5 * (2 + Math.floor(Math.random() * 2));
         this.A.note(t, this.scaleMidi(idx), 0.35 + Math.random() * 0.2, this.night > 0.5 ? 'glass' : 'celesta', {
           pan: (Math.random() - 0.5) * 1.2,
+        });
+      }
+    }
+    // kinships and residents add a soft counter-voice: an off-beat kalimba (glass at night)
+    // that grows a little more talkative with each new kind of life the player has found
+    if (this.layers.kin > 0 && this.step % 8 === 6 && Math.random() < Math.min(0.55, 0.12 + this.layers.kin * 0.06)) {
+      const pcs = chord.pcs;
+      const pc = pcs[Math.floor(Math.random() * pcs.length)];
+      const pi = Math.max(0, PENTA.indexOf(pc));
+      const idx = pi + 5 * (Math.random() < 0.6 ? 2 : 3);
+      this.A.note(t, this.scaleMidi(idx), 0.2 + Math.random() * 0.08, this.night > 0.5 ? 'glass' : 'kalimba', {
+        pan: (Math.random() - 0.5) * 0.9,
+      });
+      // with a few kinds found, sometimes it answers itself a beat later
+      if (this.layers.kin >= 3 && Math.random() < 0.35) {
+        this.A.note(t + this.sixteenth * 2, this.scaleMidi(idx + (Math.random() < 0.5 ? 1 : -1)), 0.16, 'marimba', {
+          pan: (Math.random() - 0.5) * 0.9,
         });
       }
     }

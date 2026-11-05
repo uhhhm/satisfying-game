@@ -103,7 +103,7 @@ export const BLOSSOM_COLORS = ['#f7c6d6', '#f3b2c8', '#fbd9e3', '#f0a9c0'];
 
 export type DecorKind =
   | 'grass' | 'flower' | 'tulip' | 'bush' | 'pine' | 'roundtree' | 'blossomtree' | 'mushroom'
-  | 'reeds' | 'cattail' | 'rock' | 'shell' | 'beachgrass' | 'lilypad' | 'fern' | 'birch' | 'goldflower';
+  | 'reeds' | 'cattail' | 'rock' | 'shell' | 'beachgrass' | 'lilypad' | 'fern' | 'birch' | 'goldflower' | 'willow';
 
 export interface DecorModel {
   parts: { geo: THREE.BufferGeometry; tint: boolean }[];
@@ -222,6 +222,23 @@ export function buildDecorModels(): Record<DecorKind, DecorModel> {
           { geo: ico(0.15, 1), color: '#eaeaea', pos: [-0.15, 0.62, -0.08] },
         ], 0.05), tint: true,
       },
+    ],
+    shadow: true,
+  };
+  // willow: a leaning trunk and a crown of drooping fronds (planted beside water)
+  const fronds: PartSpec[] = [{ geo: ico(0.24, 1), color: '#ffffff', pos: [0.04, 0.66, 0], scale: [1.25, 0.6, 1.25] }];
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * Math.PI * 2;
+    const r = 0.2 + (i % 2) * 0.05;
+    fronds.push({
+      geo: cone(0.07, 0.36 + (i % 3) * 0.06, 4), color: i % 2 ? '#eeeeee' : '#f6f6f6',
+      pos: [0.04 + Math.cos(a) * r, 0.7, Math.sin(a) * r], rot: [Math.PI + Math.sin(a) * 0.25, 0, -Math.cos(a) * 0.25],
+    });
+  }
+  M.willow = {
+    parts: [
+      { geo: bake([{ geo: cyl(0.04, 0.065, 0.62, 5), color: PAL.trunk, rot: [0, 0, -0.12] }], 0.02), tint: false },
+      { geo: bake(fronds, 0.09, 1.1), tint: true },
     ],
     shadow: true,
   };

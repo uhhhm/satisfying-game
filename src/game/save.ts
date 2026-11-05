@@ -1,4 +1,5 @@
 // localStorage persistence.
+import type { EcoSave } from './ecosystem';
 const KEY = 'petrichor-save-v1';
 
 export interface SaveData {
@@ -13,6 +14,8 @@ export interface SaveData {
   tod: number;
   playTime: number;
   settings: { alwaysRain: boolean; muted: boolean; music: number; sfx: number; amb: number };
+  /** kinships and visitors (absent in older saves) */
+  eco?: EcoSave;
 }
 
 export function loadSave(): SaveData | null {

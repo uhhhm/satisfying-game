@@ -43,14 +43,20 @@ export class Wonders {
   list: W[] = [];
   constructor(private g: Game) {}
 
-  reveal(ii: number, tile: number, instant: boolean) {
+  /**
+   * Show a wonder on a tile. Lucky wonders live under a tile from generation; kinship wonders
+   * pass their kind and a spot (an offset within the tile) so they sit beside whatever grew.
+   */
+  reveal(ii: number, tile: number, instant: boolean, kind?: WonderKind, at?: [number, number]) {
     const isl = this.g.islands[ii];
     const t = isl.tiles[tile];
-    if (!t.wonder || this.list.some((w) => w.ii === ii && w.tile === tile)) return;
+    const k = kind ?? t.wonder;
+    if (!k || this.list.some((w) => w.kind === k)) return;
     const g = new THREE.Group();
-    g.position.set(t.x + isl.cx + 0.15, t.h, t.z + isl.cz - 0.1);
+    const [ox, oz] = at ?? [0.15, -0.1];
+    g.position.set(t.x + isl.cx + ox, t.h + isl.base[tile], t.z + isl.cz + oz);
     g.rotation.y = Math.random() * Math.PI * 2;
-    const { anim, glow } = this.model(t.wonder, g);
+    const { anim, glow } = this.model(k, g);
     g.traverse((o) => {
       if ((o as THREE.Mesh).isMesh) {
         o.castShadow = true;
@@ -58,8 +64,8 @@ export class Wonders {
       }
     });
     this.g.scene.add(g);
-    const collected = this.g.collected.has(t.wonder);
-    const w: W = { kind: t.wonder, ii, tile, g, anim, s: new Spring(instant ? 1 : 0, 120, 8), bounce: new Spring(0, 200, 9), collected, t: 0, glow, hoverT: -10 };
+    const collected = this.g.collected.has(k);
+    const w: W = { kind: k, ii, tile, g, anim, s: new Spring(instant ? 1 : 0, 120, 8), bounce: new Spring(0, 200, 9), collected, t: 0, glow, hoverT: -10 };
     w.s.target = 1;
     g.scale.setScalar(instant ? 1 : 0.0001);
     this.list.push(w);

@@ -14,6 +14,7 @@ import { FLOWER_COLORS } from '../world/models';
 import { Landmarks } from '../world/landmarks';
 import { Creatures } from '../world/creatures';
 import { Wonders, WONDER_INFO } from '../world/wonders';
+import { Critters } from '../world/critters';
 import { Particles, SHAPE } from '../fx/particles';
 import { Rain } from '../fx/rain';
 import { Post } from '../fx/post';
@@ -23,6 +24,7 @@ import { Input } from './input';
 import { UI } from '../ui/ui';
 import { SaveData, loadSave, writeSave, clearSave } from './save';
 import { DebugPanel } from '../ui/debug';
+import { Ecosystem } from './ecosystem';
 
 const TIMBRE: Record<Biome, Timbre> = {
   beach: 'marimba', meadow: 'marimba', forest: 'kalimba', marsh: 'glass', highland: 'celesta', blossom: 'harp',
@@ -58,6 +60,8 @@ export class Game {
   landmarks: Landmarks;
   creatures: Creatures;
   wonders: Wonders;
+  critters: Critters;
+  eco: Ecosystem;
   ui: UI;
   debug: DebugPanel | null = null;
   islands: Island[] = [];
@@ -142,6 +146,8 @@ export class Game {
     this.landmarks = new Landmarks(this);
     this.creatures = new Creatures(this);
     this.wonders = new Wonders(this);
+    this.critters = new Critters(this);
+    this.eco = new Ecosystem(this);
     this.post = new Post(this.renderer, this.scene, this.rig.camera, this.lowfx ? 0 : 4);
     this.ui = new UI(this);
 
@@ -345,6 +351,8 @@ export class Game {
     this.updateSpringStones(dt);
     this.creatures.update(dt);
     this.wonders.update(dt);
+    this.critters.update(dt);
+    this.eco.update(dt);
     this.particles.update(dt, this.time);
     this.glow.update(dt, this.time);
 
@@ -478,6 +486,7 @@ export class Game {
     if (!this.input.holding) {
       this.wonders.hover(this.raycaster.ray);
       this.creatures.hover(this.raycaster.ray);
+      this.critters.hover(this.raycaster.ray);
       for (const gf of this.goldenFlowers) {
         const p = this.decor.position(gf.ref);
         p.y += 0.3;
@@ -906,6 +915,7 @@ export class Game {
     // landmark assembles itself, life arrives
     this.after(0.9, () => this.landmarks.build(ii, r, false));
     this.after(2.2, () => this.creatures.onRegion(ii, r));
+    this.eco.onRegionDone(ii, r);
     this.ui.updateProgress();
     if (isl.regionDone.every(Boolean)) this.after(3.2, () => this.completeIsland(ii));
     this.save();
@@ -1193,6 +1203,11 @@ export class Game {
       }
     }
     if (this.creatures.tryTap(ray)) return;
+    const critter = this.critters.tryTap(ray);
+    if (critter) {
+      this.eco.onCritterTap(critter);
+      return;
+    }
     let best: { ii: number; i: number; d: number } | null = null;
     for (let ii = 0; ii < this.islands.length; ii++) {
       const isl = this.islands[ii];
@@ -1217,7 +1232,7 @@ export class Game {
     const t = isl.tiles[i];
     const p = isl.worldPos(i, new THREE.Vector3());
     if (isl.stage[i] > 0 && this.seedsUnlocked && !t.pond && t.river < 0 && !t.landmark) {
-      const kind = isl.pickTree(i) ?? (t.biome === 'beach' ? null : pick(['roundtree', 'birch', 'bush'] as const));
+      const kind = this.eco.pickPlant(ii, i);
       if (kind && isl.plantTree(i, kind)) {
         this.planted.push([ii, i, kind]);
         const pan = this.pan(p.x, p.y, p.z);
@@ -1303,6 +1318,7 @@ export class Game {
       tod: this.env.tod,
       playTime: this.playTime,
       settings: { alwaysRain: this.input.alwaysRain, muted: this.audio.muted, music: CFG.musicVol, sfx: CFG.sfxVol, amb: CFG.ambVol },
+      eco: this.eco.save(),
     };
     writeSave(data);
   }
@@ -1352,6 +1368,7 @@ export class Game {
       if (this.islands[ii]?.plantTree(i, kind as any, true)) this.planted.push([ii, i, kind]);
     }
     for (const [ii, i] of s.goldenTiles || []) this.spawnGolden(ii, i, true);
+    this.eco.load(s.eco);
     this.music.layers.drone = this.islands.some((isl) => isl.regionDone.some(Boolean));
     this.music.layers.harp = this.islands.some((isl) => isl.complete);
     if (this.seedsUnlocked) this.cloud.setLeaf(true);

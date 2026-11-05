@@ -460,6 +460,7 @@ export class Island {
 
   treeTint(kind: DecorKind) {
     const r = this.rng;
+    if (kind === 'willow') return new THREE.Color(pick(['#a9cf7a', '#b6d68a', '#9cc77a'])).offsetHSL(0, 0, r.soft() * 0.03);
     if (kind === 'blossomtree') return new THREE.Color(pick(BLOSSOM_COLORS)).offsetHSL(0, 0, r.soft() * 0.03);
     if (kind === 'pine') return new THREE.Color('#5f9a63').offsetHSL(r.soft() * 0.02, 0, r.soft() * 0.05);
     if (kind === 'birch') return new THREE.Color(pick(['#a9cf6e', '#c4d675', '#e9c46a'])).offsetHSL(0, 0, r.soft() * 0.03);
@@ -483,6 +484,27 @@ export class Island {
     });
     this.hasTree[i]++;
     return true;
+  }
+
+  /** Add one decor piece somewhere on a tile (kinships use this). `ring` keeps it near the edge. */
+  sprout(i: number, kind: DecorKind, o: { tint?: THREE.Color; scale?: number; delay?: number; instant?: boolean; ring?: number; at?: [number, number] } = {}) {
+    const r = this.rng;
+    let lx: number, lz: number;
+    if (o.at) [lx, lz] = o.at;
+    else {
+      const a = r.next() * Math.PI * 2;
+      const d = (o.ring ?? 0.5) + r.soft() * 0.1;
+      lx = Math.cos(a) * d;
+      lz = Math.sin(a) * d;
+    }
+    const ref = this.addDecor(i, kind, lx, lz, { tint: o.tint, scale: o.scale, delay: o.delay, instant: o.instant });
+    if (ref && (kind === 'lilypad' || this.tiles[i].pond)) this.decorYOffset(i, 0.02);
+    return ref;
+  }
+
+  /** Decor kinds currently growing on a tile. */
+  has(i: number, kind: DecorKind) {
+    return this.tileDecor[i].some((r) => r.kind === kind);
   }
 
   private decorYOffset(i: number, dy: number) {

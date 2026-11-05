@@ -66,7 +66,7 @@ export class Creatures {
     ];
     bg.setAttribute('position', new THREE.Float32BufferAttribute(w, 3));
     bg.computeVertexNormals();
-    this.bflyMesh = new THREE.InstancedMesh(bg, flapMaterial('#ffffff', 16, 1.0), 48);
+    this.bflyMesh = new THREE.InstancedMesh(bg, flapMaterial('#ffffff', 16, 1.0), 80);
     this.bflyMesh.count = 0;
     this.bflyMesh.frustumCulled = false;
     g.scene.add(this.bflyMesh);
@@ -161,6 +161,22 @@ export class Creatures {
       const p = this.g.islands[ii].worldPos(i, new THREE.Vector3());
       this.addBird(p, 1, -1);
     }
+  }
+
+  /** A bird that stays and circles a spot (thickets). */
+  settle(p: THREE.Vector3) {
+    if (this.birds.length < 56) this.addBird(p.clone(), 1, -1);
+  }
+
+  /** A butterfly-like flier with a set colour, e.g. blue dragonflies over a reed bed. */
+  flier(p: THREE.Vector3, color: string, instant = false) {
+    if (this.bflies.length >= 80) return;
+    this.bflyMesh.setColorAt(this.bflies.length, new THREE.Color(color));
+    if (this.bflyMesh.instanceColor) this.bflyMesh.instanceColor.needsUpdate = true;
+    const b: Butterfly = { p: p.clone().setY(p.y + 0.4), v: new THREE.Vector3(), home: p.clone(), ground: p.y, t: Math.random() * 100, scale: new Spring(instant ? 1 : 0, 120, 8) };
+    b.scale.target = 1;
+    this.bflies.push(b);
+    this.bflyMesh.count = this.bflies.length;
   }
 
   birdBurst(x: number, z: number, n: number) {

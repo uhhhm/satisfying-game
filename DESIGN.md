@@ -66,9 +66,30 @@ precision. Loomlight is elegant but abstract: harder to love at a glance, harder
 | ∞ | The Archipelago | everything | Free play, a slow day/night cycle, all verbs. |
 
 Finishing an island raises the next one out of the sea in the distance, and the camera glides over.
-Each island has three hidden **Wonders** (a sleeping fox, a fairy ring, an old bell…) revealed by
-blooming the right tile. Tap them to keep them in your **Journal**. Rare **golden flowers** show up on
+Each island has three **Wonders** (a sleeping fox, a fairy ring, an old bell…). Most arrive with a
+kinship (section 5a); a few stay hidden under a random tile as lucky finds. Tap them to keep them in your **Journal**. Rare **golden flowers** show up on
 lush tiles; tapping one plays a glittering run and counts toward the journal.
+
+## 5a. The living layer: kinships and visitors
+
+Rain-and-bloom is the core, but on its own it asks no decisions. The living layer adds reasons to
+choose *where* to rain and plant, under four guardrails:
+
+1. **Additive only.** Nothing decays, nothing is lost, there are no wrong moves, resources, meters
+   or timers.
+2. **Rain alone still finishes every island.** The layer unlocks wonders, creatures, music and
+   landmark touches, never progress. (Check: a bot that only rains still restores the archipelago
+   at the same pace.)
+3. **No new inputs or text.** Still hold, tap and move. Wishes are pictograms in the world.
+4. **A feedback budget.** Kinship moments are quieter than a bloom, reuse the same vocabulary
+   (pop, sparkle, quantized notes), and queue so two never land on the same beat.
+
+**Kinships** are adjacency rules read off the board (beehive, fern hollow, thicket, reed bed,
+cottage garden, lantern tree), one of each per grove. Growth stages 2 and 3 become ingredients, and
+seeds become a paintbrush: what a tap plants depends on the spot (willows by water, blossom by
+shrines). **Visitors** appear after a grove is done, with a recipe in a thought bubble. Fulfil it
+and they move in and the grove's landmark flourishes; ignore them and nothing happens. Tapping a
+visitor makes the tiles that could answer it shimmer, which is the only "hint" in the system.
 
 ## 6. Art direction
 

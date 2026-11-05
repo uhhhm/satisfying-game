@@ -1,6 +1,7 @@
 // Deterministic island generation on a hex grid.
 import { HEX_DIRS, hexToWorld, key } from '../core/hex';
 import { Noise2D, RNG } from '../core/math';
+import { LUCKY_WONDERS } from './kinships';
 
 export type Biome = 'beach' | 'meadow' | 'forest' | 'marsh' | 'highland' | 'blossom';
 export type LandmarkKind =
@@ -330,7 +331,8 @@ export function generateIsland(def: IslandDef): IslandData {
   const pool = tiles
     .filter((t) => !t.pond && t.river < 0 && !t.spring && !t.landmark && t.coastDist >= 1)
     .sort((a, b) => a.jitter - b.jitter);
-  for (const w of def.wonders) {
+  // most wonders arrive with kinships (game/ecosystem.ts); only the lucky ones hide under tiles
+  for (const w of def.wonders.filter((k) => LUCKY_WONDERS.has(k))) {
     const water = w === 'heron' || w === 'turtle' || w === 'float' || w === 'moonlily';
     let cands = pool.filter((t) => !wonderTiles.includes(t));
     if (water) {

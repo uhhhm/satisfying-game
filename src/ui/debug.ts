@@ -86,6 +86,7 @@ export class DebugPanel {
         const n = g.islands.findIndex((x) => !x.unlocked);
         if (n >= 0) g.unlockIsland(n);
       },
+      'visitor now': () => g.eco.debugVisitor(),
       'lush everything': () => {
         const isl = g.islands[g.focus];
         isl.tiles.forEach((t, i) => g.after(i * 0.01, () => {
