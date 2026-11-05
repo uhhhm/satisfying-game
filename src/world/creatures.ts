@@ -29,7 +29,7 @@ function flapMaterial(color: THREE.ColorRepresentation, speed: number, amp: numb
   return m;
 }
 
-interface Butterfly { p: THREE.Vector3; v: THREE.Vector3; home: THREE.Vector3; ground: number; t: number; scale: Spring }
+interface Butterfly { c: THREE.Color; p: THREE.Vector3; v: THREE.Vector3; home: THREE.Vector3; ground: number; t: number; scale: Spring }
 interface Bird { p: THREE.Vector3; center: THREE.Vector3; r: number; ang: number; speed: number; h: number; leaving: number; life: number; scale: Spring; takeoff: number }
 interface Sheep {
   g: THREE.Group; body: THREE.Mesh; head: THREE.Mesh; ii: number; tile: number;
@@ -66,7 +66,7 @@ export class Creatures {
     ];
     bg.setAttribute('position', new THREE.Float32BufferAttribute(w, 3));
     bg.computeVertexNormals();
-    this.bflyMesh = new THREE.InstancedMesh(bg, flapMaterial('#ffffff', 16, 1.0), 48);
+    this.bflyMesh = new THREE.InstancedMesh(bg, flapMaterial('#ffffff', 16, 1.0), 80);
     this.bflyMesh.count = 0;
     this.bflyMesh.frustumCulled = false;
     g.scene.add(this.bflyMesh);
@@ -131,7 +131,7 @@ export class Creatures {
     const c = new THREE.Color(pick(['#fff2b3', '#ffffff', '#ffd1dc', '#cfe8ff', '#ffcf99', '#e6d4ff']));
     this.bflyMesh.setColorAt(this.bflies.length, c);
     if (this.bflyMesh.instanceColor) this.bflyMesh.instanceColor.needsUpdate = true;
-    this.bflies.push({ p: p.clone().setY(p.y + 0.4), v: new THREE.Vector3(), home: p.clone(), ground: p.y, t: Math.random() * 100, scale: new Spring(0, 120, 8) });
+    this.bflies.push({ c, p: p.clone().setY(p.y + 0.4), v: new THREE.Vector3(), home: p.clone(), ground: p.y, t: Math.random() * 100, scale: new Spring(0, 120, 8) });
     this.bflies[this.bflies.length - 1].scale.target = 1;
     this.bflyMesh.count = this.bflies.length;
   }
@@ -161,6 +161,44 @@ export class Creatures {
       const p = this.g.islands[ii].worldPos(i, new THREE.Vector3());
       this.addBird(p, 1, -1);
     }
+  }
+
+  /** A bird that stays and circles a spot (thickets). */
+  settle(p: THREE.Vector3) {
+    if (this.birds.length < 56) this.addBird(p.clone(), 1, -1);
+  }
+
+  /** A butterfly-like flier with a set colour, e.g. blue dragonflies over a reed bed. */
+  flier(p: THREE.Vector3, color: string, instant = false) {
+    if (this.bflies.length >= 80) return;
+    const c = new THREE.Color(color);
+    this.bflyMesh.setColorAt(this.bflies.length, c);
+    if (this.bflyMesh.instanceColor) this.bflyMesh.instanceColor.needsUpdate = true;
+    const b: Butterfly = { c, p: p.clone().setY(p.y + 0.4), v: new THREE.Vector3(), home: p.clone(), ground: p.y, t: Math.random() * 100, scale: new Spring(instant ? 1 : 0, 120, 8) };
+    b.scale.target = 1;
+    this.bflies.push(b);
+    this.bflyMesh.count = this.bflies.length;
+  }
+
+  /** Let the life of an unloaded island go: its sheep, and the fliers that call it home. */
+  removeIsland(ii: number, cx: number, cz: number, r: number) {
+    this.sheep = this.sheep.filter((s) => {
+      if (s.ii !== ii) return true;
+      s.g.parent?.remove(s.g);
+      const shared = new Set<THREE.BufferGeometry>(Object.values(this.sheepGeo));
+      s.g.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh && !shared.has(m.geometry)) m.geometry.dispose();
+      });
+      return false;
+    });
+    const near = (p: THREE.Vector3) => Math.hypot(p.x - cx, p.z - cz) < r + 3;
+    this.bflies = this.bflies.filter((b) => !near(b.home));
+    this.bflies.forEach((b, i) => this.bflyMesh.setColorAt(i, b.c));
+    if (this.bflyMesh.instanceColor) this.bflyMesh.instanceColor.needsUpdate = true;
+    this.bflyMesh.count = this.bflies.length;
+    this.birds = this.birds.filter((b) => !near(b.center));
+    this.birdMesh.count = this.birds.length;
   }
 
   birdBurst(x: number, z: number, n: number) {

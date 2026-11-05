@@ -5,8 +5,10 @@ import { U } from '../core/shaders';
 import { SHAPE } from '../fx/particles';
 import type { Game } from '../game/game';
 import type { WonderKind } from './gen';
+import type { Theme } from './themes';
 
-export const WONDER_INFO: Record<WonderKind, { name: string; line: string; island: number; icon: string }> = {
+/** island ≥ 0: an authored island; -1: found on far islands (of `theme`, or any far island). */
+export const WONDER_INFO: Record<WonderKind, { name: string; line: string; island: number; icon: string; theme?: Theme }> = {
   fox: { name: 'Sleeping Fox', line: 'Dreams of warm stones.', island: 0, icon: '🦊' },
   kite: { name: 'Lost Kite', line: 'Still remembers the wind.', island: 0, icon: '🪁' },
   snail: { name: 'Moss Snail', line: 'In no hurry at all.', island: 0, icon: '🐌' },
@@ -19,8 +21,20 @@ export const WONDER_INFO: Record<WonderKind, { name: string; line: string; islan
   lantern: { name: 'Stone Lantern', line: 'Lit by someone kind.', island: 3, icon: '🏮' },
   moonlily: { name: 'Moon Lily', line: 'Blooms only at dusk.', island: 3, icon: '🪷' },
   bell: { name: 'Shrine Bell', line: 'One clear note for the valley.', island: 3, icon: '🔔' },
+  squirrel: { name: 'Red Squirrel', line: 'Counting acorns, losing count.', island: -1, icon: '🐿️', theme: 'autumn' },
+  jacklantern: { name: 'Pumpkin Lantern', line: 'Grinning softly at the dusk.', island: -1, icon: '🎃', theme: 'autumn' },
+  hare: { name: 'Snow Hare', line: 'Gone before the snow settles.', island: -1, icon: '🐇', theme: 'frost' },
+  crane: { name: 'Frost Crane', line: 'Dances when no one is looking.', island: -1, icon: '🦢', theme: 'frost' },
+  salamander: { name: 'Ember Newt', line: 'Warm as a pocket stone.', island: -1, icon: '🦎', theme: 'ember' },
+  firemoth: { name: 'Fire Moth', line: 'Carries a little light home.', island: -1, icon: '🦋', theme: 'ember' },
+  fennec: { name: 'Fennec Fox', line: 'Hears the rain before it falls.', island: -1, icon: '🦊', theme: 'oasis' },
+  ibis: { name: 'Sacred Ibis', line: 'Writes on the water with its beak.', island: -1, icon: '🪶', theme: 'oasis' },
+  tortoise: { name: 'Wandering Tortoise', line: 'Always one island ahead.', island: -1, icon: '🐢' },
+  bottle: { name: 'Message in a Bottle', line: '"Wish you were here."', island: -1, icon: '🍾' },
 };
 export const WONDER_ORDER: WonderKind[] = ['fox', 'kite', 'snail', 'fairyring', 'owl', 'stag', 'heron', 'float', 'turtle', 'lantern', 'moonlily', 'bell'];
+/** wonders of the far islands (endless mode) */
+export const FAR_WONDER_ORDER: WonderKind[] = ['squirrel', 'jacklantern', 'hare', 'crane', 'salamander', 'firemoth', 'fennec', 'ibis', 'tortoise', 'bottle'];
 
 interface W {
   kind: WonderKind;
@@ -43,14 +57,20 @@ export class Wonders {
   list: W[] = [];
   constructor(private g: Game) {}
 
-  reveal(ii: number, tile: number, instant: boolean) {
+  /**
+   * Show a wonder on a tile. Lucky wonders live under a tile from generation; kinship wonders
+   * pass their kind and a spot (an offset within the tile) so they sit beside whatever grew.
+   */
+  reveal(ii: number, tile: number, instant: boolean, kind?: WonderKind, at?: [number, number]) {
     const isl = this.g.islands[ii];
     const t = isl.tiles[tile];
-    if (!t.wonder || this.list.some((w) => w.ii === ii && w.tile === tile)) return;
+    const k = kind ?? t.wonder;
+    if (!k || this.list.some((w) => w.kind === k)) return;
     const g = new THREE.Group();
-    g.position.set(t.x + isl.cx + 0.15, t.h, t.z + isl.cz - 0.1);
+    const [ox, oz] = at ?? [0.15, -0.1];
+    g.position.set(t.x + isl.cx + ox, t.h + isl.base[tile], t.z + isl.cz + oz);
     g.rotation.y = Math.random() * Math.PI * 2;
-    const { anim, glow } = this.model(t.wonder, g);
+    const { anim, glow } = this.model(k, g);
     g.traverse((o) => {
       if ((o as THREE.Mesh).isMesh) {
         o.castShadow = true;
@@ -58,8 +78,8 @@ export class Wonders {
       }
     });
     this.g.scene.add(g);
-    const collected = this.g.collected.has(t.wonder);
-    const w: W = { kind: t.wonder, ii, tile, g, anim, s: new Spring(instant ? 1 : 0, 120, 8), bounce: new Spring(0, 200, 9), collected, t: 0, glow, hoverT: -10 };
+    const collected = this.g.collected.has(k);
+    const w: W = { kind: k, ii, tile, g, anim, s: new Spring(instant ? 1 : 0, 120, 8), bounce: new Spring(0, 200, 9), collected, t: 0, glow, hoverT: -10 };
     w.s.target = 1;
     g.scale.setScalar(instant ? 1 : 0.0001);
     this.list.push(w);
@@ -73,6 +93,21 @@ export class Wonders {
         }
       });
     }
+  }
+
+  /** Forget the wonders of an unloaded island (collected ones stay in the journal). */
+  removeIsland(ii: number) {
+    this.list = this.list.filter((w) => {
+      if (w.ii !== ii) return true;
+      w.g.parent?.remove(w.g);
+      w.g.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        m.geometry.dispose();
+        (m.material as THREE.Material).dispose();
+      });
+      return false;
+    });
   }
 
   /** A little "notice me" wiggle when the pointer passes over. */
@@ -143,6 +178,16 @@ export class Wonders {
         case 'bell': a[0].rotation.z = Math.sin(w.t * 2.2) * 0.08 * (1 + Math.abs(b) * 4); break;
         case 'moonlily': a[0].rotation.y += dt * 0.2; break;
         case 'fairyring': a[0].rotation.y += dt * 0.15; break;
+        case 'squirrel': a[0].rotation.x = Math.sin(w.t * 6) > 0.7 ? 0.25 : 0; if (a[1]) a[1].rotation.x = Math.sin(w.t * 1.3) * 0.15; break;
+        case 'jacklantern': a[0].scale.y = 1 + Math.sin(w.t * 2) * 0.03; break;
+        case 'hare': a[0].rotation.z = Math.sin(w.t * 0.9) > 0.8 ? 0.2 : 0; break;
+        case 'crane': a[0].rotation.y = Math.sin(w.t * 0.5) * 0.4; a[0].position.y = 0.42 + Math.max(0, Math.sin(w.t * 1.1)) * 0.03; break;
+        case 'salamander': a[0].rotation.y = Math.sin(w.t * 1.4) * 0.25; break;
+        case 'firemoth': a[0].position.y = 0.45 + Math.sin(w.t * 2.3) * 0.08; a[0].rotation.y += dt * 1.2; break;
+        case 'fennec': a[0].rotation.z = Math.sin(w.t * 3) > 0.85 ? 0.15 : 0; break;
+        case 'ibis': a[0].rotation.x = Math.sin(w.t * 0.8) * 0.25 + 0.1; break;
+        case 'tortoise': a[0].position.z = 0.16 + Math.sin(w.t * 0.5) * 0.03; break;
+        case 'bottle': a[0].rotation.z = Math.sin(w.t * 1.2) * 0.15; a[0].position.y = 0.08 + Math.sin(w.t * 1.6) * 0.02; break;
       }
       // uncollected wonders twinkle to invite a tap
       if (!w.collected && Math.random() < dt * 2.2) {
@@ -323,6 +368,159 @@ export class Wonders {
         g.add(b);
         anim.push(b);
         add(new THREE.CylinderGeometry(0.05, 0.11, 0.2, 10, 1, true), M('#d4a35a', { metalness: 0.6, roughness: 0.35, side: THREE.DoubleSide }), [0, -0.12, 0], [0, 0, 0], [1, 1, 1], b);
+        break;
+      }
+      case 'squirrel': {
+        const red = M('#c8693a'), cream = M('#f3e2c8');
+        const body = new THREE.Group();
+        g.add(body);
+        anim.push(body);
+        add(sph(0.1), red, [0, 0.13, 0], [0, 0, 0], [0.9, 1.15, 0.9], body);
+        add(sph(0.06), cream, [0, 0.13, 0.06], [0, 0, 0], [0.8, 1, 0.5], body);
+        add(sph(0.07), red, [0, 0.27, 0.03], [0, 0, 0], [1, 0.95, 1], body);
+        add(cone(0.025, 0.06, 4), red, [0.04, 0.35, 0.02], [0, 0, -0.2], [1, 1, 1], body);
+        add(cone(0.025, 0.06, 4), red, [-0.04, 0.35, 0.02], [0, 0, 0.2], [1, 1, 1], body);
+        add(sph(0.012, 0), M('#2f2a28'), [0.03, 0.29, 0.09], [0, 0, 0], [1, 1, 1], body);
+        add(sph(0.012, 0), M('#2f2a28'), [-0.03, 0.29, 0.09], [0, 0, 0], [1, 1, 1], body);
+        add(sph(0.025, 0), M('#9a6a40'), [0, 0.19, 0.11], [0, 0, 0], [1, 1.2, 1], body);
+        const tail = new THREE.Group();
+        tail.position.set(0, 0.1, -0.1);
+        g.add(tail);
+        anim.push(tail);
+        add(sph(0.08), red, [0, 0.12, -0.04], [0.4, 0, 0], [0.8, 1.6, 0.8], tail);
+        break;
+      }
+      case 'jacklantern': {
+        const p = new THREE.Group();
+        g.add(p);
+        anim.push(p);
+        const glowM = gm('#ffb347');
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * Math.PI * 2;
+          add(sph(0.11), M('#e98a3a'), [Math.cos(a) * 0.07, 0.12, Math.sin(a) * 0.07], [0, 0, 0], [0.9, 0.85, 0.9], p);
+        }
+        add(new THREE.BoxGeometry(0.03, 0.03, 0.02), glowM, [0.045, 0.15, 0.15], [0, 0, 0.78], [1, 1, 1], p);
+        add(new THREE.BoxGeometry(0.03, 0.03, 0.02), glowM, [-0.045, 0.15, 0.15], [0, 0, 0.78], [1, 1, 1], p);
+        add(new THREE.BoxGeometry(0.09, 0.02, 0.02), glowM, [0, 0.09, 0.155], [0, 0, 0], [1, 1, 1], p);
+        add(cyl(0.015, 0.02, 0.06, 5), M('#6f8f4a'), [0, 0.25, 0], [0, 0, 0.3], [1, 1, 1], p);
+        break;
+      }
+      case 'hare': {
+        const w = M('#f6f7f9'), pink = M('#f2c1cc');
+        const h = new THREE.Group();
+        g.add(h);
+        anim.push(h);
+        add(sph(0.11), w, [0, 0.11, -0.02], [0, 0, 0], [0.9, 0.95, 1.3], h);
+        add(sph(0.07), w, [0, 0.21, 0.1], [0, 0, 0], [1, 1, 1], h);
+        add(new THREE.BoxGeometry(0.03, 0.18, 0.015), w, [0.03, 0.34, 0.08], [-0.25, 0, -0.12], [1, 1, 1], h);
+        add(new THREE.BoxGeometry(0.03, 0.18, 0.015), w, [-0.03, 0.34, 0.08], [-0.25, 0, 0.12], [1, 1, 1], h);
+        add(sph(0.012, 0), M('#2f2a28'), [0.04, 0.23, 0.15], [0, 0, 0], [1, 1, 1], h);
+        add(sph(0.012, 0), M('#2f2a28'), [-0.04, 0.23, 0.15], [0, 0, 0], [1, 1, 1], h);
+        add(sph(0.012, 0), pink, [0, 0.21, 0.17], [0, 0, 0], [1, 1, 1], h);
+        break;
+      }
+      case 'crane': {
+        const w = M('#f6f7f9'), dark = M('#3a3330');
+        add(cyl(0.008, 0.008, 0.36, 4), dark, [0.03, 0.18, 0]);
+        add(cyl(0.008, 0.008, 0.36, 4), dark, [-0.03, 0.18, 0]);
+        const b = new THREE.Group();
+        b.position.y = 0.42;
+        g.add(b);
+        anim.push(b);
+        add(sph(0.11), w, [0, 0, 0], [0.2, 0, 0], [0.8, 0.75, 1.5], b);
+        add(sph(0.07), dark, [0, 0.02, -0.15], [0, 0, 0], [0.9, 0.6, 1.2], b);
+        add(cyl(0.018, 0.024, 0.3, 5), w, [0, 0.16, 0.12], [0.35, 0, 0], [1, 1, 1], b);
+        add(sph(0.035), w, [0, 0.3, 0.17], [0, 0, 0], [1, 1, 1], b);
+        add(sph(0.02, 0), M('#d4553a'), [0, 0.33, 0.17], [0, 0, 0], [1, 0.6, 1], b);
+        add(cone(0.012, 0.12, 4), M('#c9b88a'), [0, 0.3, 0.25], [Math.PI / 2, 0, 0], [1, 1, 1], b);
+        break;
+      }
+      case 'salamander': {
+        const o = M('#f08a4b'), spot = M('#3a3330');
+        const s2 = new THREE.Group();
+        g.add(s2);
+        anim.push(s2);
+        add(sph(0.06), o, [0, 0.04, 0], [0, 0, 0], [1, 0.6, 2.4], s2);
+        add(sph(0.05), o, [0, 0.05, 0.16], [0, 0, 0], [1.1, 0.7, 1.1], s2);
+        add(cone(0.03, 0.18, 5), o, [0, 0.035, -0.2], [-Math.PI / 2, 0, 0], [1, 0.6, 1], s2);
+        for (const [x, z] of [[0.06, 0.08], [-0.06, 0.08], [0.06, -0.07], [-0.06, -0.07]]) add(sph(0.022, 0), o, [x, 0.015, z], [0, 0, 0], [1.4, 0.5, 0.9], s2);
+        for (let i = 0; i < 4; i++) add(sph(0.014, 0), spot, [((i % 2) - 0.5) * 0.05, 0.075, 0.08 - i * 0.06], [0, 0, 0], [1, 0.4, 1], s2);
+        add(sph(0.012, 0), spot, [0.03, 0.07, 0.19], [0, 0, 0], [1, 1, 1], s2);
+        add(sph(0.012, 0), spot, [-0.03, 0.07, 0.19], [0, 0, 0], [1, 1, 1], s2);
+        break;
+      }
+      case 'firemoth': {
+        add(cyl(0.012, 0.02, 0.35, 5), M('#5a4a42'), [0, 0.17, 0]);
+        const m = new THREE.Group();
+        m.position.y = 0.45;
+        g.add(m);
+        anim.push(m);
+        const wing = gm('#ffb070');
+        add(sph(0.025), M('#7a5a40'), [0, 0, 0], [0, 0, 0], [1, 1, 2.4], m);
+        add(new THREE.CircleGeometry(0.09, 6), wing, [0.07, 0, 0.01], [-Math.PI / 2, 0, 0.3], [1, 1.3, 1], m);
+        add(new THREE.CircleGeometry(0.09, 6), wing, [-0.07, 0, 0.01], [-Math.PI / 2, 0, -0.3], [1, 1.3, 1], m);
+        add(new THREE.CircleGeometry(0.055, 6), gm('#fff1a8'), [0.06, 0.002, -0.07], [-Math.PI / 2, 0, 0.6], [1, 1, 1], m);
+        add(new THREE.CircleGeometry(0.055, 6), gm('#fff1a8'), [-0.06, 0.002, -0.07], [-Math.PI / 2, 0, -0.6], [1, 1, 1], m);
+        break;
+      }
+      case 'fennec': {
+        const sand = M('#efd2a0'), cream = M('#fbf3e6');
+        const f = new THREE.Group();
+        g.add(f);
+        anim.push(f);
+        add(sph(0.1), sand, [0, 0.11, -0.03], [0, 0, 0], [0.9, 0.9, 1.3], f);
+        add(sph(0.07), sand, [0, 0.22, 0.09], [0, 0, 0], [1, 0.9, 1], f);
+        add(cone(0.05, 0.16, 4), sand, [0.06, 0.34, 0.07], [0, 0, -0.35], [1, 1, 0.4], f);
+        add(cone(0.05, 0.16, 4), sand, [-0.06, 0.34, 0.07], [0, 0, 0.35], [1, 1, 0.4], f);
+        add(cone(0.03, 0.11, 4), M('#f2c1cc'), [0.06, 0.33, 0.08], [0, 0, -0.35], [1, 1, 0.3], f);
+        add(cone(0.03, 0.11, 4), M('#f2c1cc'), [-0.06, 0.33, 0.08], [0, 0, 0.35], [1, 1, 0.3], f);
+        add(sph(0.035), cream, [0, 0.2, 0.15], [0, 0, 0], [1, 0.7, 1.2], f);
+        add(sph(0.012, 0), M('#2f2a28'), [0, 0.21, 0.19], [0, 0, 0], [1, 1, 1], f);
+        add(sph(0.012, 0), M('#2f2a28'), [0.035, 0.24, 0.14], [0, 0, 0], [1, 1, 1], f);
+        add(sph(0.012, 0), M('#2f2a28'), [-0.035, 0.24, 0.14], [0, 0, 0], [1, 1, 1], f);
+        add(sph(0.06), sand, [0, 0.1, -0.2], [0.6, 0, 0], [0.7, 0.7, 1.6], f);
+        add(sph(0.03), M('#3a3330'), [0, 0.07, -0.29], [0, 0, 0], [1, 1, 1], f);
+        break;
+      }
+      case 'ibis': {
+        const w = M('#f6f3ec'), dark = M('#2f2a28');
+        add(cyl(0.008, 0.008, 0.3, 4), dark, [0.03, 0.15, 0]);
+        add(cyl(0.008, 0.008, 0.3, 4), dark, [-0.03, 0.15, 0]);
+        add(sph(0.1), w, [0, 0.36, 0], [0.2, 0, 0], [0.8, 0.8, 1.4]);
+        add(sph(0.05), dark, [0, 0.36, -0.13], [0, 0, 0], [1, 0.7, 1.4]);
+        const n = new THREE.Group();
+        n.position.set(0, 0.4, 0.1);
+        g.add(n);
+        anim.push(n);
+        add(cyl(0.018, 0.022, 0.18, 5), dark, [0, 0.08, 0.03], [0.4, 0, 0], [1, 1, 1], n);
+        add(sph(0.035), dark, [0, 0.17, 0.07], [0, 0, 0], [1, 1, 1], n);
+        add(new THREE.TorusGeometry(0.1, 0.008, 4, 10, Math.PI * 0.45), dark, [0, 0.07, 0.07], [0, -Math.PI / 2, -0.2], [1, 1, 1], n);
+        break;
+      }
+      case 'tortoise': {
+        const shell = new THREE.Group();
+        g.add(shell);
+        add(new THREE.SphereGeometry(0.2, 7, 4, 0, Math.PI * 2, 0, Math.PI / 2), M('#a68a5c'), [0, 0.04, 0], [0, 0, 0], [1, 0.9, 1.2], shell);
+        for (let i = 0; i < 5; i++) {
+          const a = (i / 5) * Math.PI * 2;
+          add(new THREE.CylinderGeometry(0.05, 0.05, 0.02, 6), M('#c9a86c'), [Math.cos(a) * 0.1, 0.17, Math.sin(a) * 0.12], [Math.sin(a) * 0.5, 0, -Math.cos(a) * 0.5], [1, 1, 1], shell);
+        }
+        add(new THREE.CylinderGeometry(0.06, 0.06, 0.02, 6), M('#c9a86c'), [0, 0.22, 0], [0, 0, 0], [1, 1, 1], shell);
+        const h = add(sph(0.06), M('#9cae7a'), [0, 0.07, 0.16]);
+        anim.push(h);
+        for (const [x, z] of [[0.15, 0.13], [-0.15, 0.13], [0.15, -0.13], [-0.15, -0.13]]) add(cyl(0.035, 0.04, 0.07, 6), M('#9cae7a'), [x, 0.0, z]);
+        add(new THREE.BoxGeometry(0.06, 0.04, 0.05), M('#e9c46a'), [0.04, 0.27, -0.02], [0, 0.4, 0]);
+        break;
+      }
+      case 'bottle': {
+        const b = new THREE.Group();
+        b.position.y = 0.08;
+        g.add(b);
+        anim.push(b);
+        add(cyl(0.06, 0.06, 0.2, 9), new THREE.MeshStandardMaterial({ color: '#a6e3c9', roughness: 0.1, transparent: true, opacity: 0.65, emissive: new THREE.Color('#5fb69a'), emissiveIntensity: 0.25 }), [0, 0, 0], [0, 0, Math.PI / 2], [1, 1, 1], b);
+        add(cyl(0.025, 0.04, 0.07, 8), new THREE.MeshStandardMaterial({ color: '#a6e3c9', roughness: 0.1, transparent: true, opacity: 0.65 }), [0.13, 0, 0], [0, 0, -Math.PI / 2], [1, 1, 1], b);
+        add(cyl(0.022, 0.022, 0.04, 6), M('#b08a5c'), [0.18, 0, 0], [0, 0, Math.PI / 2], [1, 1, 1], b);
+        add(cyl(0.035, 0.035, 0.12, 8), M('#f3ead6'), [0, 0, 0], [0, 0, Math.PI / 2], [1, 1, 1], b);
         break;
       }
     }

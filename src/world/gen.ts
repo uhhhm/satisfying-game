@@ -1,13 +1,17 @@
 // Deterministic island generation on a hex grid.
 import { HEX_DIRS, hexToWorld, key } from '../core/hex';
 import { Noise2D, RNG } from '../core/math';
+import { LUCKY_WONDERS } from './kinships';
+import { THEME_STYLE, Theme, themeForEndless, themedName } from './themes';
 
 export type Biome = 'beach' | 'meadow' | 'forest' | 'marsh' | 'highland' | 'blossom';
 export type LandmarkKind =
-  | 'cottage' | 'windmill' | 'shrine' | 'stones' | 'greattree' | 'well' | 'lighthouse' | 'pier' | 'pagoda';
+  | 'cottage' | 'windmill' | 'shrine' | 'stones' | 'greattree' | 'well' | 'lighthouse' | 'pier' | 'pagoda'
+  | 'barn' | 'haystack' | 'igloo' | 'cairn' | 'stilthut' | 'tent';
 export type WonderKind =
   | 'fox' | 'kite' | 'snail' | 'fairyring' | 'owl' | 'stag' | 'heron' | 'float' | 'turtle'
-  | 'lantern' | 'moonlily' | 'bell';
+  | 'lantern' | 'moonlily' | 'bell'
+  | 'squirrel' | 'jacklantern' | 'hare' | 'crane' | 'salamander' | 'firemoth' | 'fennec' | 'ibis' | 'tortoise' | 'bottle';
 
 export interface TileData {
   i: number;
@@ -40,7 +44,7 @@ export interface IslandDef {
   cx: number;
   cz: number;
   radius: number;
-  theme: 'meadow' | 'forest' | 'lakes' | 'highland';
+  theme: Theme;
   ponds: number;
   springs: number;
   wonders: WonderKind[];
@@ -62,21 +66,74 @@ export const ISLANDS: IslandDef[] = [
   { id: 3, name: 'Lanternfell', seed: 51, cx: -26, cz: -28, radius: 8.4, theme: 'highland', ponds: 2, springs: 2, wonders: ['lantern', 'moonlily', 'bell'] },
 ];
 
-const EXTRA_NAMES = ['Dewmere', 'Fernhollow', 'Thistledown', 'Willowisle', 'Mossbay', 'Brackenreach'];
-const THEMES: IslandDef['theme'][] = ['meadow', 'forest', 'lakes', 'highland'];
-export const MAX_ISLANDS = 8;
+const LEGACY_NAMES = ['Dewmere', 'Fernhollow', 'Thistledown', 'Willowisle', 'Mossbay', 'Brackenreach'];
+const LEGACY_THEMES: Theme[] = ['meadow', 'forest', 'lakes', 'highland'];
 
-/** Authored islands first, then the archipelago keeps growing outward. */
+// Endless mode: islands chain outward one after another, each placed a short glide from the
+// last, turning gently away from the authored cluster and never overlapping an earlier island.
+// Saves from before endless mode had up to four procedural islands laid out on a spiral;
+// those keep their old layout (`legacy`) so their tiles still match the save.
+let legacy = 0;
+const defCache: IslandDef[] = [];
+const usedNames = new Set<string>(ISLANDS.map((d) => d.name));
+
+export function setLegacyIslands(n: number) {
+  legacy = Math.max(0, Math.min(4, n));
+  defCache.length = 0;
+  usedNames.clear();
+  ISLANDS.forEach((d) => usedNames.add(d.name));
+}
+export function legacyIslands() {
+  return legacy;
+}
+
+/** Authored islands first, then the archipelago keeps growing outward forever. */
 export function islandDef(i: number): IslandDef {
   if (i < ISLANDS.length) return ISLANDS[i];
+  for (let k = ISLANDS.length; k <= i; k++) if (!defCache[k]) defCache[k] = makeDef(k);
+  return defCache[i];
+}
+
+function makeDef(i: number): IslandDef {
   const k = i - ISLANDS.length;
-  const a = 0.9 + k * 1.75;
-  const r = 50 + k * 9;
-  const theme = THEMES[(k + 1) % THEMES.length];
-  return {
-    id: i, name: EXTRA_NAMES[k % EXTRA_NAMES.length], seed: 101 + k * 17, cx: Math.cos(a) * r, cz: -20 + Math.sin(a) * r,
-    radius: 6 + (k % 3) * 0.6, theme, ponds: theme === 'lakes' ? 3 : 1, springs: theme === 'lakes' || theme === 'highland' ? 2 : 1, wonders: [],
+  if (k < legacy) {
+    const a = 0.9 + k * 1.75;
+    const r = 50 + k * 9;
+    const theme = LEGACY_THEMES[(k + 1) % LEGACY_THEMES.length];
+    const name = LEGACY_NAMES[k % LEGACY_NAMES.length];
+    usedNames.add(name);
+    return {
+      id: i, name, seed: 101 + k * 17, cx: Math.cos(a) * r, cz: -20 + Math.sin(a) * r,
+      radius: 6 + (k % 3) * 0.6, theme, ponds: theme === 'lakes' ? 3 : 1, springs: theme === 'lakes' || theme === 'highland' ? 2 : 1, wonders: [],
+    };
+  }
+  const n = k - legacy;
+  const rng = new RNG(9001 + i * 131);
+  const theme = themeForEndless(n);
+  // islands grow slowly, up to about Lanternfell's size
+  const radius = Math.min(8.6, 6 + Math.min(n, 12) * 0.18 + rng.next() * 0.6);
+  const prev = islandDef(i - 1);
+  const base = Math.atan2(prev.cz + 20, prev.cx - 4);
+  let cx = 0, cz = 0;
+  for (let tries = 0; tries < 60; tries++) {
+    const spread = 0.9 + tries * 0.08;
+    const a = base + rng.soft() * spread;
+    const d = prev.radius * 1.9 + radius * 1.9 + 10 + rng.next() * 6 + Math.floor(tries / 12) * 6;
+    cx = prev.cx + Math.cos(a) * d;
+    cz = prev.cz + Math.sin(a) * d;
+    let clear = true;
+    for (let j = 0; j < i && clear; j++) {
+      const o = islandDef(j);
+      if (Math.hypot(o.cx - cx, o.cz - cz) < o.radius * 1.9 + radius * 1.9 + 6) clear = false;
+    }
+    if (clear) break;
+  }
+  const name = themedName(theme, 31 + i * 7, usedNames);
+  usedNames.add(name);
+  const P: Record<Theme, [number, number]> = {
+    meadow: [1, 1], forest: [1, 1], lakes: [3, 2], highland: [1, 2], autumn: [2, 1], frost: [2, 1], ember: [3, 1], oasis: [2, 0],
   };
+  return { id: i, name, seed: 1301 + i * 37, cx, cz, radius, theme, ponds: P[theme][0], springs: P[theme][1], wonders: ['bottle'] };
 }
 
 const STEP = 0.24;
@@ -160,7 +217,8 @@ export function generateIsland(def: IslandDef): IslandData {
   const maxCD = Math.max(...cd);
 
   // heights: terraced, rising inland
-  const hScale = def.theme === 'highland' ? 2.9 : def.theme === 'lakes' ? 1.5 : def.theme === 'forest' ? 2.2 : 1.7;
+  const HS: Record<Theme, number> = { highland: 2.9, lakes: 1.5, forest: 2.2, meadow: 1.7, autumn: 1.9, frost: 2.6, ember: 2.4, oasis: 1.3 };
+  const hScale = HS[def.theme];
   for (const t of tiles) {
     const n2 = noise2.fbm(t.x * 0.17, t.z * 0.17, 3);
     const inland = t.coastDist / Math.max(1, maxCD);
@@ -217,7 +275,7 @@ export function generateIsland(def: IslandDef): IslandData {
     }
     for (const p of ponds) {
       p.pond = true;
-      if (def.theme === 'lakes') {
+      if (def.theme === 'lakes' || def.theme === 'oasis') {
         for (const j of p.neighbors) {
           const n = tiles[j];
           if (n.coastDist >= 1 && n.river < 0 && !n.spring && rng.chance(0.45)) {
@@ -236,8 +294,12 @@ export function generateIsland(def: IslandDef): IslandData {
     const nearWater = t.pond || t.neighbors.some((j) => tiles[j].pond || tiles[j].river >= 0);
     let biome: Biome = 'meadow';
     const sandy = bnoise.get(t.x * 0.35 + 9, t.z * 0.35 - 4);
-    if (t.coastDist === 0 && t.h <= 0.35 && sandy > -0.15) biome = 'beach';
+    if (t.coastDist === 0 && t.h <= 0.35 && sandy > (def.theme === 'ember' ? -0.6 : -0.15)) biome = 'beach';
     else if (def.theme === 'meadow') biome = b > 0.28 ? 'forest' : 'meadow';
+    else if (def.theme === 'autumn') biome = b > 0.05 ? 'forest' : 'meadow';
+    else if (def.theme === 'frost') biome = t.h > 1.7 ? 'highland' : b > 0.12 ? 'forest' : nearWater ? 'marsh' : 'meadow';
+    else if (def.theme === 'ember') biome = t.h > 1.9 ? 'highland' : b > -0.05 ? 'forest' : 'meadow';
+    else if (def.theme === 'oasis') biome = nearWater || b < -0.3 ? 'meadow' : b > 0.22 ? 'highland' : t.coastDist <= 1 ? 'beach' : b > -0.05 ? 'beach' : 'meadow';
     else if (def.theme === 'forest') biome = b < -0.3 ? 'meadow' : 'forest';
     else if (def.theme === 'lakes') biome = nearWater || b > 0.25 ? 'marsh' : b < -0.35 ? 'forest' : 'meadow';
     else biome = t.h > 2.1 ? 'highland' : b > 0.1 ? 'blossom' : b < -0.35 ? 'forest' : 'meadow';
@@ -305,6 +367,7 @@ export function generateIsland(def: IslandDef): IslandData {
     let kind: LandmarkKind;
     if (lt.coastDist === 0 && coastal > 0.35 && !usedCoastal.has('lighthouse')) kind = 'lighthouse';
     else if (lt.coastDist === 0 && coastal > 0.35 && !usedCoastal.has('pier')) kind = 'pier';
+    else if (THEME_STYLE[def.theme].landmarks?.[dom]) kind = rng.pick(THEME_STYLE[def.theme].landmarks![dom]!);
     else if (dom === 'forest') kind = rng.pick(['greattree', 'shrine', 'cottage'] as const);
     else if (dom === 'highland') kind = rng.pick(['stones', 'pagoda', 'windmill'] as const);
     else if (dom === 'blossom') kind = rng.pick(['pagoda', 'shrine', 'cottage'] as const);
@@ -319,7 +382,8 @@ export function generateIsland(def: IslandDef): IslandData {
   for (const rg of regions) {
     seen[rg.landmark] = (seen[rg.landmark] || 0) + 1;
     if (seen[rg.landmark] > 2 && rg.landmark !== 'lighthouse') {
-      const alt: LandmarkKind[] = ['cottage', 'well', 'windmill', 'shrine', 'stones', 'greattree'];
+      const themed = Object.values(THEME_STYLE[def.theme].landmarks ?? {}).flat();
+      const alt: LandmarkKind[] = themed.length ? [...new Set(themed)] : ['cottage', 'well', 'windmill', 'shrine', 'stones', 'greattree'];
       rg.landmark = alt[(rg.landmarkTile + seen[rg.landmark]) % alt.length];
       tiles[rg.landmarkTile].landmark = rg.landmark;
     }
@@ -330,7 +394,8 @@ export function generateIsland(def: IslandDef): IslandData {
   const pool = tiles
     .filter((t) => !t.pond && t.river < 0 && !t.spring && !t.landmark && t.coastDist >= 1)
     .sort((a, b) => a.jitter - b.jitter);
-  for (const w of def.wonders) {
+  // most wonders arrive with kinships (game/ecosystem.ts); only the lucky ones hide under tiles
+  for (const w of def.wonders.filter((k) => LUCKY_WONDERS.has(k))) {
     const water = w === 'heron' || w === 'turtle' || w === 'float' || w === 'moonlily';
     let cands = pool.filter((t) => !wonderTiles.includes(t));
     if (water) {

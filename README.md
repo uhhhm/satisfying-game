@@ -44,7 +44,7 @@ URL flags: `?debug` opens the tuning panel, `?lowfx` forces lighter graphics.
 |---|---|---|
 | Rain | hold left button | hold one finger |
 | Move the cloud | move the pointer | drag |
-| Plant a tree / splash a tile / boop a sheep / collect | click | tap |
+| Plant a tree / splash a tile / boop a creature / collect | click | tap |
 | Turn the camera | right-drag (or shift-drag) | two-finger twist / drag |
 | Zoom | wheel | pinch |
 
@@ -89,15 +89,57 @@ swing, wells, a lighthouse whose beam turns at night, a pier with a bobbing boat
 
 Each restored island raises the next one out of the sea, and gives you a **little cloud** that
 trails behind like a duckling and rains where you rain (up to four). After Lanternfell the days
-start to turn on their own, and the archipelago keeps growing outward with new procedural islands.
+start to turn on their own, and the archipelago keeps growing outward, forever.
+
+**Endless mode.** Beyond Lanternfell each new island rises a short glide from the last, a little
+larger each time. Four new kinds of shore appear among the familiar ones, each with its own palette,
+plants, landmarks, sky tint, musical key and ambience:
+
+| Theme | Look | Plants | Landmarks | Sound |
+|---|---|---|---|---|
+| Autumn | amber and rust | maples, pumpkins, falling leaves | barns, haystacks | A, rustling leaves |
+| Frost | pale mint and white | snow-capped pines, drifting snow | igloos (with a snowman), cairns | F, ice tinkles, more wind |
+| Ember | black sand and moss | ferns, glowing caps, steaming hot springs, rising sparks | stilt huts | C, bubbling springs |
+| Oasis | dunes around a green heart | palms, flowering cacti | tents | E, cicadas through the day |
+
+The music moves to an island's key on the next chord when you travel there. Each far theme has two
+wonders of its own (a red squirrel, a snow hare, an ember newt, a fennec…), every other far island
+can bring the wandering tortoise, and any far island may hide a message in a bottle. Gardens grow
+around any home: barns, tents, stilt huts and igloos as well as cottages. To keep things light, only the
+four authored islands and the four newest far islands stay loaded; older ones settle into the journal,
+which counts every island restored.
 
 **Small things.** Leave the cloud alone for a while and it dozes off (eyes closed, slow breathing,
 little bubbles); it wakes with a bounce. A resting cloud still drips now and then. Tappable things
 wiggle when your pointer passes over them. Finishing an island brings a petal shower.
 
-**Discoveries.** Twelve hidden **wonders** (a sleeping fox, a lost kite, a fairy ring, an old owl, a
-white stag, a heron, a glass float, a river turtle, a stone lantern, a moon lily, a shrine bell…)
-appear when you bloom the right tile. Tap them to keep them in the **journal**. Rare **golden
+**Kinships.** When two living things sit side by side, a third thing grows between them. You learn
+the rules by watching the board, not from a menu:
+
+| Side by side | What grows |
+|---|---|
+| 3 flowering tiles | a straw beehive, with bees |
+| something lush (or a tree) beside water | a fern hollow with mushrooms, and a frog |
+| 3 trees | a thicket with undergrowth, and a bird that stays |
+| water with 2 lush banks | a reed bed with cattails, and dragonflies |
+| a cottage among flowers | a cottage garden, and a villager who potters about |
+| a blossom tree beside a shrine | paper lanterns that glow at dusk |
+
+Each grove can hold one of each. They only ever add: nothing decays, and rain alone still restores
+every island. Kinships you've found add a soft counter-voice to the music. What a tap plants depends
+on where you tap: willows by water, blossom trees by shrines, pines in the woods.
+
+**Visitors.** After a grove is finished, a rabbit, hedgehog or duck sometimes waits at its edge with
+a thought bubble showing a recipe (🌼🌼🌼, 🌳💧…). Tap it and the spots that could answer it shimmer.
+Make that kinship happen in the grove and the visitor cheers and moves in, and the grove's landmark
+gains a few homely touches (window boxes and a bench, a treehouse, a pennant, hanging lanterns…).
+At most two wait at a time, they never leave, and you can ignore them.
+
+**Discoveries.** Twelve **wonders** (a sleeping fox, a lost kite, a fairy ring, an old owl, a
+white stag, a heron, a glass float, a river turtle, a stone lantern, a moon lily, a shrine bell…).
+Eight arrive with a particular kinship on a particular island (the fox curls up in Hearthmeadow's
+first cottage garden); four are lucky finds hidden under a random tile. Tap them to keep them in the
+**journal**, which also tracks kinships and hints at the wonders you're missing. Rare **golden
 flowers** appear on lush tiles. Sheep go *mbaa* and jump when tapped.
 
 **Sound.** Everything is synthesized live with Web Audio. There are no audio files.
@@ -138,10 +180,12 @@ hints, lapping foam and sea ripples, and wind-swayed vegetation.
 src/
   core/      config (all tunables), springs/noise/rng, hex math, shared shader patches
   audio/     engine (buses, reverb, instrument voices), generative music, sfx + ambience
-  world/     island generation, island rendering + tile springs, instanced decor, models,
-             landmarks, creatures, wonders, sky/sea/lighting
+  world/     island generation (+ endless layout), island themes, island rendering + tile springs,
+             instanced decor, models, landmarks, creatures, critters, wonders, kinship data,
+             sky/sea/lighting
   fx/        particles, rain, post-processing
-  game/      game orchestration + progression, cloud(s), camera rig, input, save
+  game/      game orchestration + progression, ecosystem (kinships, visitors), cloud(s),
+             camera rig, input, save
   ui/        DOM UI (title, HUD, journal, settings, photo bar) and the tuning panel
 ```
 

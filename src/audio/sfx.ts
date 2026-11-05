@@ -237,6 +237,101 @@ export class Sfx {
     vib.stop(t + dur + 0.05);
   }
 
+  /** Small creature voices: a frog's croak, a duck's quack, a squeak, a bird's chirp, a bee's buzz. */
+  critter(kind: 'frog' | 'duck' | 'squeak' | 'chirp' | 'buzz', pan = 0, pitch = 1) {
+    const ctx = this.ctx;
+    const t = this.A.now + 0.01;
+    const out = this.A.out(this.A.sfx, pan, 0.25, t, 0.8);
+    const env = (g: GainNode, at: number, peak: number, dur: number) => {
+      g.gain.setValueAtTime(0, at);
+      g.gain.linearRampToValueAtTime(peak, at + Math.min(0.012, dur * 0.2));
+      g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    };
+    if (kind === 'frog') {
+      // two throaty pulses: "rib-bit"
+      for (let k = 0; k < 2; k++) {
+        const at = t + k * 0.13;
+        const o = ctx.createOscillator();
+        o.type = 'sawtooth';
+        const f = (k ? 150 : 175) * pitch * rand(0.95, 1.05);
+        o.frequency.setValueAtTime(f, at);
+        o.frequency.exponentialRampToValueAtTime(f * 0.7, at + 0.08);
+        const lp = ctx.createBiquadFilter();
+        lp.type = 'bandpass';
+        lp.frequency.value = 520;
+        lp.Q.value = 2.5;
+        const am = ctx.createOscillator();
+        const ag = ctx.createGain();
+        am.frequency.value = 38;
+        ag.gain.value = 0.5;
+        const g = ctx.createGain();
+        env(g, at, 0.16, 0.1);
+        am.connect(ag).connect(g.gain);
+        o.connect(lp).connect(g).connect(out);
+        o.start(at);
+        am.start(at);
+        o.stop(at + 0.12);
+        am.stop(at + 0.12);
+      }
+      return;
+    }
+    if (kind === 'duck') {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      const f = 330 * pitch * rand(0.95, 1.05);
+      o.frequency.setValueAtTime(f * 1.1, t);
+      o.frequency.linearRampToValueAtTime(f * 0.85, t + 0.14);
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 1150;
+      bp.Q.value = 4;
+      const g = ctx.createGain();
+      env(g, t, 0.12, 0.16);
+      o.connect(bp).connect(g).connect(out);
+      o.start(t);
+      o.stop(t + 0.2);
+      return;
+    }
+    if (kind === 'buzz') {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = 210 * pitch;
+      const vib = ctx.createOscillator();
+      const vg = ctx.createGain();
+      vib.frequency.value = 11;
+      vg.gain.value = 9;
+      vib.connect(vg).connect(o.frequency);
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 900;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.03, t + 0.15);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.7);
+      o.connect(lp).connect(g).connect(out);
+      o.start(t);
+      vib.start(t);
+      o.stop(t + 0.75);
+      vib.stop(t + 0.75);
+      return;
+    }
+    // squeak / chirp: quick rising sine glides
+    const n = kind === 'chirp' ? 2 : 1;
+    for (let k = 0; k < n; k++) {
+      const at = t + k * 0.09;
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      const f = (kind === 'chirp' ? 2600 : 1300) * pitch * rand(0.95, 1.08);
+      o.frequency.setValueAtTime(f, at);
+      o.frequency.exponentialRampToValueAtTime(f * 1.35, at + 0.06);
+      const g = ctx.createGain();
+      env(g, at, kind === 'chirp' ? 0.035 : 0.05, 0.08);
+      o.connect(g).connect(out);
+      o.start(at);
+      o.stop(at + 0.1);
+    }
+  }
+
   /** Little "boop" for UI. */
   ui(pitch = 1) {
     const ctx = this.ctx;
@@ -358,17 +453,27 @@ export class Ambience {
     this.rainBody.gain.setTargetAtTime(intensity * (0.1 + overWater * 0.08), t, 0.3);
   }
 
+  /** theme character, eased toward the focus island's (see world/themes.ts) */
+  style = { wind: 1, birds: 1, cicada: 0, bubbles: 0, tinkle: 0, rustle: 0 };
+  /** semitones from D, so the ice tinkles land in the music's key */
+  key = 0;
+  private nextBubble = 3;
+  private nextTinkle = 4;
+  private nextRustle = 5;
+
   update(dt: number, sfx: Sfx) {
     this.t += dt;
     const t = this.A.now;
+    const S = this.style;
     this.sea.gain.setTargetAtTime(0.22, t, 1);
-    this.wind.gain.setTargetAtTime(0.09 * (1 - this.life * 0.7), t, 2);
+    this.wind.gain.setTargetAtTime(0.09 * S.wind * (1 - this.life * 0.7 / Math.max(1, S.wind)), t, 2);
     this.river.gain.setTargetAtTime(Math.min(1, this.rivers * 0.35) * 0.05, t, 1);
     if (Math.random() < dt * 4) this.riverFilter.frequency.setTargetAtTime(600 + Math.random() * 900, t, 0.08);
-    this.crickets.gain.setTargetAtTime(this.night * this.life, t, 2);
+    // crickets at night; on an oasis, cicadas hum through the warm day too
+    this.crickets.gain.setTargetAtTime(this.night * this.life + S.cicada * this.life * 0.45 * (1 - this.night), t, 2);
 
     // birdsong rises with life and fades at night
-    this.nextBird -= dt * (0.15 + this.life * 1.3) * (1 - this.night * 0.9);
+    this.nextBird -= dt * (0.15 + this.life * 1.3) * (1 - this.night * 0.9) * S.birds;
     if (this.nextBird <= 0) {
       this.nextBird = 2 + Math.random() * 5;
       this.bird();
@@ -380,7 +485,32 @@ export class Ambience {
         this.frog();
       }
     }
-    void sfx;
+    // hot springs bubble (ember), ice tinkles (frost), dry leaves skitter (autumn)
+    if (S.bubbles > 0.05) {
+      this.nextBubble -= dt * S.bubbles;
+      if (this.nextBubble <= 0) {
+        this.nextBubble = 0.8 + Math.random() * 2.5;
+        const pan = (Math.random() - 0.5) * 1.2;
+        const n = 1 + Math.floor(Math.random() * 3);
+        for (let k = 0; k < n; k++) setTimeout(() => sfx.plip(pan, true, 0.5 + Math.random() * 0.3), k * 90);
+      }
+    }
+    if (S.tinkle > 0.05) {
+      this.nextTinkle -= dt * S.tinkle;
+      if (this.nextTinkle <= 0) {
+        this.nextTinkle = 3 + Math.random() * 6;
+        const P = [0, 2, 4, 7, 9];
+        const m = 86 + P[Math.floor(Math.random() * 5)] + this.key + (Math.random() < 0.3 ? 12 : 0);
+        this.A.note(this.A.now + 0.02, m, 0.07 + Math.random() * 0.05, 'glass', { pan: (Math.random() - 0.5) * 1.4, send: 0.8 });
+      }
+    }
+    if (S.rustle > 0.05) {
+      this.nextRustle -= dt * S.rustle * (0.5 + this.life);
+      if (this.nextRustle <= 0) {
+        this.nextRustle = 3 + Math.random() * 5;
+        sfx.rustle((Math.random() - 0.5) * 1.4, 0.35 + Math.random() * 0.25);
+      }
+    }
   }
 
   private bird() {

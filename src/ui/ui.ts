@@ -3,7 +3,10 @@ import * as THREE from 'three';
 import { CFG } from '../core/config';
 import type { Game } from '../game/game';
 import type { WonderKind } from '../world/gen';
-import { WONDER_INFO, WONDER_ORDER } from '../world/wonders';
+import { WONDER_INFO, WONDER_ORDER, FAR_WONDER_ORDER } from '../world/wonders';
+import { ISLANDS } from '../world/gen';
+import { THEME_STYLE, Theme } from '../world/themes';
+import { KIN_INFO, KIN_ORDER, KinRule, wonderSource } from '../world/kinships';
 
 const ICON = {
   journal: `<svg viewBox="0 0 24 24"><path d="M5 4.5c2.5-1 5-1 7 .8 2-1.8 4.5-1.8 7-.8v14c-2.5-1-5-1-7 .8-2-1.8-4.5-1.8-7-.8z"/><path d="M12 5.3v14"/></svg>`,
@@ -62,6 +65,7 @@ export class UI {
         <button data-a="sound" title="Sound (M)">${ICON.sound}</button>
         <button data-a="settings" title="Settings">${ICON.settings}</button>
       </div>
+      <div id="bubbles" class="bubbles"></div>
       <div id="toasts" class="toasts"></div>
       <div id="panel" class="panel"></div>
       <div id="photobar" class="photobar">
@@ -172,6 +176,41 @@ export class UI {
     if (this.panel.dataset.kind === 'journal') this.renderJournal();
   }
 
+  kinFound(rule: KinRule) {
+    const k = KIN_INFO[rule];
+    this.toast(`<span class="ic kin">${k.recipe}</span><span><b>${k.name}</b><em>${k.line}</em></span>`, 'wonder');
+    if (this.panel.dataset.kind === 'journal') this.renderJournal();
+  }
+
+  // ------------------------------------------------------------- visitor thought bubbles
+  bubble(recipe: string) {
+    const el = document.createElement('div');
+    el.className = 'bubble';
+    el.innerHTML = `<span class="b-in">${recipe}</span><i></i><i class="s"></i>`;
+    this.root.querySelector('#bubbles')!.appendChild(el);
+    requestAnimationFrame(() => setTimeout(() => el.classList.add('in'), 900));
+    return el;
+  }
+
+  placeBubble(el: HTMLElement, x: number, y: number, show: boolean) {
+    el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+    el.classList.toggle('hide', !show);
+  }
+
+  bubblePulse(el: HTMLElement) {
+    el.classList.remove('pulse');
+    void el.offsetWidth;
+    el.classList.add('pulse');
+  }
+
+  /** The wish came true: the bubble turns into a heart and floats off. */
+  bubbleHappy(el: HTMLElement) {
+    el.querySelector('.b-in')!.textContent = '♥';
+    el.classList.add('happy');
+    setTimeout(() => el.classList.add('gone'), 1200);
+    setTimeout(() => el.remove(), 2400);
+  }
+
   golden(n: number) {
     this.toast(`<span class="ic">✿</span><span><b>Golden flower</b><em>${n} gathered</em></span>`, 'gold');
   }
@@ -221,20 +260,47 @@ export class UI {
 
   private renderJournal() {
     const g = this.g;
-    const found = WONDER_ORDER.filter((k) => g.collected.has(k)).length;
+    const found = [...WONDER_ORDER, ...FAR_WONDER_ORDER].filter((k) => g.collected.has(k)).length;
+    const farOpen = g.islands.length > ISLANDS.length;
     const cards = WONDER_ORDER.map((k) => {
       const w = WONDER_INFO[k];
       const has = g.collected.has(k);
-      const seen = g.islands[w.island].unlocked;
-      return `<div class="card ${has ? 'has' : ''}"><div class="ic">${has ? w.icon : seen ? '?' : '·'}</div><div class="nm">${has ? w.name : '&nbsp;'}</div><div class="ln">${has ? w.line : ''}</div></div>`;
+      const seen = g.islands[w.island]?.unlocked;
+      // an unfound wonder hints at where it comes from, once its island is up
+      const src = wonderSource(k);
+      const clue = !has && seen ? (src && g.eco.discovered.has(src.rule) ? `<span class="rc">${KIN_INFO[src.rule].recipe}</span>` : src ? 'somewhere alive' : 'a lucky find') : '';
+      return `<div class="card ${has ? 'has' : ''}"><div class="ic">${has ? w.icon : seen ? '?' : '·'}</div><div class="nm">${has ? w.name : '&nbsp;'}</div><div class="ln">${has ? w.line : clue}</div></div>`;
     }).join('');
+    const kinCount = (r: KinRule) => g.eco.count(r);
+    const kinCards = KIN_ORDER.map((r) => {
+      const k = KIN_INFO[r];
+      const has = g.eco.discovered.has(r);
+      return `<div class="card kin ${has ? 'has' : ''}"><div class="ic">${has ? k.recipe : '?'}</div><div class="nm">${has ? k.name : '&nbsp;'}</div><div class="ln">${has ? `${k.line}<br><span class="ct">× ${kinCount(r)}</span>` : k.riddle}</div></div>`;
+    }).join('');
+    const residents = g.eco.visitors.filter((v) => v.satisfied).length + g.eco.settledResidents;
+    // far islands (endless mode): their own wonders, by theme
+    const farCards = FAR_WONDER_ORDER.map((k) => {
+      const w = WONDER_INFO[k];
+      const has = g.collected.has(k);
+      const seen = w.theme ? g.themesSeen.has(w.theme) : farOpen;
+      const src = wonderSource(k);
+      const clue = !has && seen ? (src && g.eco.discovered.has(src.rule) ? `<span class="rc">${KIN_INFO[src.rule].recipe}</span>` : src ? 'somewhere alive' : 'a lucky find') : !has && w.theme ? THEME_STYLE[w.theme].label : '';
+      return `<div class="card ${has ? 'has' : ''}"><div class="ic">${has ? w.icon : seen ? '?' : '·'}</div><div class="nm">${has ? w.name : '&nbsp;'}</div><div class="ln">${has ? w.line : clue}</div></div>`;
+    }).join('');
+    const restored = g.islands.filter((x) => x.complete).length;
+    const farThemes: Theme[] = ['autumn', 'frost', 'ember', 'oasis'];
+    const metFar = farThemes.filter((t) => g.themesSeen.has(t)).length;
     const tiles = g.islands.reduce((a, isl) => a + (isl.unlocked ? Array.from(isl.stage).filter((s) => s > 0).length : 0), 0);
     const mins = Math.floor(g.playTime / 60);
     this.panel.innerHTML = `
       <button class="x">${ICON.close}</button>
       <h2>Journal</h2>
-      <p class="stats"><span>${found}/12 wonders</span><span>✿ ${g.golden}</span><span>${tiles} tiles in bloom</span><span>${mins} min of rain</span></p>
-      <div class="cards">${cards}</div>`;
+      <p class="stats"><span>${found}/${WONDER_ORDER.length + (farOpen ? FAR_WONDER_ORDER.length : 0)} wonders</span><span>✿ ${g.golden}</span><span>${tiles} tiles in bloom</span><span>${residents} ${residents === 1 ? 'neighbour' : 'neighbours'}</span><span>${mins} min of rain</span></p>
+      <div class="cards">${cards}</div>
+      <h3>Kinships <small>${g.eco.discovered.size}/${KIN_ORDER.length}</small></h3>
+      <div class="cards">${kinCards}</div>
+      ${farOpen ? `<h3>Far islands <small>${restored} restored · ${metFar}/4 new shores</small></h3>
+      <div class="cards">${farCards}</div>` : ''}`;
     this.panel.querySelector('.x')!.addEventListener('click', () => this.closeAll());
   }
 

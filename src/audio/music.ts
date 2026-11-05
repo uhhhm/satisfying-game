@@ -44,12 +44,20 @@ export class Music {
   private walk = 7;
   private lastPlayed = 0;
   activity = 0; // 0..1, rises with play
-  layers = { drone: false, celesta: true, harp: false };
+  layers = { drone: false, celesta: true, harp: false, kin: 0 };
   vitality = 0; // world progress 0..1, opens the filter
   night = 0;
   private swellAmt = 0;
   private droneGain: GainNode | null = null;
   private timer: number | null = null;
+  /** transposition in semitones from D; changes land on the next chord, so the shift is gentle */
+  private key = 0;
+  private pendingKey = 0;
+
+  /** Move the whole score to another key (each island theme has its own). */
+  setKey(semis: number) {
+    this.pendingKey = semis;
+  }
 
   constructor(private A: AudioEngine) {
     const ctx = A.ctx;
@@ -69,7 +77,7 @@ export class Music {
   /** Scale table spanning D3..D7. */
   private scaleMidi(i: number) {
     const oct = Math.floor(i / 5);
-    return ROOT - 12 + oct * 12 + PENTA[((i % 5) + 5) % 5];
+    return ROOT - 12 + oct * 12 + PENTA[((i % 5) + 5) % 5] + this.key;
   }
 
   start() {
@@ -143,6 +151,7 @@ export class Music {
     const stepsPerChord = 32; // 2 bars of 4/4
     if (this.step > 0 && this.step % stepsPerChord === 0) {
       this.chordIdx = (this.chordIdx + 1) % CHORDS.length;
+      this.key = this.pendingKey;
       this.startChord(t);
     }
     const chord = CHORDS[this.chordIdx];
@@ -184,11 +193,28 @@ export class Music {
         });
       }
     }
+    // kinships and residents add a soft counter-voice: an off-beat kalimba (glass at night)
+    // that grows a little more talkative with each new kind of life the player has found
+    if (this.layers.kin > 0 && this.step % 8 === 6 && Math.random() < Math.min(0.55, 0.12 + this.layers.kin * 0.06)) {
+      const pcs = chord.pcs;
+      const pc = pcs[Math.floor(Math.random() * pcs.length)];
+      const pi = Math.max(0, PENTA.indexOf(pc));
+      const idx = pi + 5 * (Math.random() < 0.6 ? 2 : 3);
+      this.A.note(t, this.scaleMidi(idx), 0.2 + Math.random() * 0.08, this.night > 0.5 ? 'glass' : 'kalimba', {
+        pan: (Math.random() - 0.5) * 0.9,
+      });
+      // with a few kinds found, sometimes it answers itself a beat later
+      if (this.layers.kin >= 3 && Math.random() < 0.35) {
+        this.A.note(t + this.sixteenth * 2, this.scaleMidi(idx + (Math.random() < 0.5 ? 1 : -1)), 0.16, 'marimba', {
+          pan: (Math.random() - 0.5) * 0.9,
+        });
+      }
+    }
     // gentle harp figure every other bar when unlocked
     if (this.layers.harp && this.step % 16 === 8 && Math.random() < 0.35 + this.vitality * 0.3) {
       const base = chord.notes;
       for (let i = 0; i < 4; i++) {
-        this.A.note(t + i * this.sixteenth, base[(i + 1) % base.length] + 12, 0.3, 'harp', {
+        this.A.note(t + i * this.sixteenth, base[(i + 1) % base.length] + 12 + this.key, 0.3, 'harp', {
           pan: -0.3 + i * 0.2,
         });
       }
@@ -203,7 +229,7 @@ export class Music {
     this.padVoices = [];
     const att = 2.4;
     chord.notes.forEach((m, i) => {
-      const f = mtof(m);
+      const f = mtof(m + this.key);
       const g = ctx.createGain();
       g.gain.setValueAtTime(0, t);
       g.gain.linearRampToValueAtTime(0.06 - i * 0.005, t + att);
@@ -246,7 +272,7 @@ export class Music {
       }
       const o = ctx.createOscillator();
       o.type = 'sine';
-      o.frequency.value = mtof(chord.bass);
+      o.frequency.value = mtof(chord.bass + this.key);
       const g = ctx.createGain();
       g.gain.setValueAtTime(0, t);
       g.gain.linearRampToValueAtTime(0.12, t + 1.5);

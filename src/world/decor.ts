@@ -5,9 +5,9 @@ import { patchSway } from '../core/shaders';
 import { DecorKind, DecorModel, buildDecorModels } from './models';
 
 const CAPACITY: Partial<Record<DecorKind, number>> = {
-  grass: 7000, flower: 4500, tulip: 2000, bush: 1500, pine: 1500, roundtree: 1200, blossomtree: 900,
+  grass: 9000, flower: 6000, tulip: 2500, bush: 1500, pine: 1500, roundtree: 1200, blossomtree: 900,
   mushroom: 1500, reeds: 1500, cattail: 1200, rock: 1500, shell: 800, beachgrass: 1500, lilypad: 1000,
-  fern: 2000, birch: 900, goldflower: 120,
+  fern: 2000, birch: 900, goldflower: 120, willow: 500, pumpkin: 800, snowpine: 1500, palm: 900, cactus: 1000,
 };
 
 class Pool {

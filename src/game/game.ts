@@ -8,12 +8,14 @@ import { Music } from '../audio/music';
 import { Ambience, Sfx } from '../audio/sfx';
 import { Environment } from '../world/env';
 import { DecorSystem, DecorRef } from '../world/decor';
-import { ISLANDS, generateIsland, islandDef, MAX_ISLANDS, Biome, WonderKind } from '../world/gen';
+import { ISLANDS, generateIsland, islandDef, setLegacyIslands, legacyIslands, Biome, WonderKind } from '../world/gen';
+import { THEME_STYLE, Theme } from '../world/themes';
 import { Island } from '../world/island';
 import { FLOWER_COLORS } from '../world/models';
 import { Landmarks } from '../world/landmarks';
 import { Creatures } from '../world/creatures';
 import { Wonders, WONDER_INFO } from '../world/wonders';
+import { Critters } from '../world/critters';
 import { Particles, SHAPE } from '../fx/particles';
 import { Rain } from '../fx/rain';
 import { Post } from '../fx/post';
@@ -23,6 +25,7 @@ import { Input } from './input';
 import { UI } from '../ui/ui';
 import { SaveData, loadSave, writeSave, clearSave } from './save';
 import { DebugPanel } from '../ui/debug';
+import { Ecosystem } from './ecosystem';
 
 const TIMBRE: Record<Biome, Timbre> = {
   beach: 'marimba', meadow: 'marimba', forest: 'kalimba', marsh: 'glass', highland: 'celesta', blossom: 'harp',
@@ -30,6 +33,8 @@ const TIMBRE: Record<Biome, Timbre> = {
 const ISLAND_TOD = [0.34, 0.46, 0.6, 0.77];
 
 const LEAF_COLORS = ['#9cc97a', '#7fb069', '#b3d985', '#c7d98a', '#86c06c'];
+/** how many far (procedural) islands stay alive behind the newest one */
+const LIVE_FAR = 4;
 const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
 
@@ -58,6 +63,8 @@ export class Game {
   landmarks: Landmarks;
   creatures: Creatures;
   wonders: Wonders;
+  critters: Critters;
+  eco: Ecosystem;
   ui: UI;
   debug: DebugPanel | null = null;
   islands: Island[] = [];
@@ -76,6 +83,10 @@ export class Game {
   freePlay = false;
   bloomCount = 0;
   tutorial = { hold: true, tap: false, spring: false };
+  /** themes the player has arrived at, for first-arrival subtitles and the journal */
+  themesSeen = new Set<Theme>();
+  private themeT = { key: 0, tint: new THREE.Color('#ffffff'), tintAmt: 0 };
+  private moteAcc = 0;
   private later: Later[] = [];
   private raycaster = new THREE.Raycaster();
   private cloudTarget = new THREE.Vector3(0, 4, 0);
@@ -142,6 +153,8 @@ export class Game {
     this.landmarks = new Landmarks(this);
     this.creatures = new Creatures(this);
     this.wonders = new Wonders(this);
+    this.critters = new Critters(this);
+    this.eco = new Ecosystem(this);
     this.post = new Post(this.renderer, this.scene, this.rig.camera, this.lowfx ? 0 : 4);
     this.ui = new UI(this);
 
@@ -345,6 +358,8 @@ export class Game {
     this.updateSpringStones(dt);
     this.creatures.update(dt);
     this.wonders.update(dt);
+    this.critters.update(dt);
+    this.eco.update(dt);
     this.particles.update(dt, this.time);
     this.glow.update(dt, this.time);
 
@@ -375,6 +390,7 @@ export class Game {
       }
     }
     this.focusPt.set(this.rig.target.x.value, 0, this.rig.target.z.value);
+    this.updateTheme(dt, fi);
     this.env.update(dt, this.focusPt);
 
     // audio state
@@ -417,6 +433,49 @@ export class Game {
     this.adaptResolution();
   }
 
+  /** Ease the sky tint, key and ambience toward the focus island's theme, and drift its motes. */
+  private updateTheme(dt: number, fi: Island) {
+    const st = fi.style;
+    const T = this.themeT;
+    T.tint.lerp(new THREE.Color(st.sky?.color ?? '#ffffff'), Math.min(1, dt * 0.6));
+    T.tintAmt = damp(T.tintAmt, st.sky?.amt ?? 0, 0.6, dt);
+    this.env.tint.copy(T.tint);
+    this.env.tintAmt = T.tintAmt * (0.4 + this.env.vitality * 0.6);
+    if (T.key !== st.key) {
+      T.key = st.key;
+      this.music.setKey(st.key);
+      this.amb.key = st.key;
+    }
+    const A = this.amb.style;
+    for (const k of Object.keys(A) as (keyof typeof A)[]) A[k] = damp(A[k], st.amb[k] * (k === 'wind' || k === 'birds' ? 1 : fi.progress()), 0.5, dt);
+    if (!this.started || this.photo) return;
+    // drifting motes: autumn leaves, frost snow, ember sparks, oasis dust
+    const m = st.motes;
+    if (m && !this.lowfx) {
+      this.moteAcc += dt * m.rate * (0.3 + fi.progress() * 0.7);
+      const c = this.rig.target;
+      while (this.moteAcc >= 1) {
+        this.moteAcc -= 1;
+        const x = c.x.value + randSoft() * 10, z = c.z.value + randSoft() * 10;
+        const leaf = m.shape === 'leaf';
+        this.particles.emit({
+          x, y: m.rise ? this.groundY(x, z) + 0.2 : rand(5, 8), z,
+          vx: rand(0.1, 0.4), vy: m.rise ? rand(0.3, 0.6) : -rand(leaf ? 0.4 : 0.3, leaf ? 0.8 : 0.6), vz: randSoft() * 0.2,
+          life: m.rise ? rand(2.5, 4) : rand(7, 10), size: leaf ? rand(0.13, 0.2) : rand(0.06, 0.1), color: pick(m.colors), alpha: leaf ? 1 : 0.85,
+          shape: leaf ? SHAPE.leaf : SHAPE.dot, spin: leaf ? randSoft() * 3 : 0, flutter: leaf ? 0.9 : 0.3, drag: 0.3, gravity: 0,
+        });
+      }
+    }
+    // ember isles: hot springs steam softly
+    if (fi.data.def.theme === 'ember' && Math.random() < dt * 2.5) {
+      const ponds = fi.tiles.filter((t) => t.pond && fi.stage[t.i] > 0);
+      if (ponds.length) {
+        const p = fi.worldPos(pick(ponds).i, new THREE.Vector3());
+        this.particles.emit({ x: p.x + randSoft() * 0.5, y: p.y + 0.05, z: p.z + randSoft() * 0.5, vx: 0.1, vy: rand(0.3, 0.5), vz: randSoft() * 0.1, life: rand(2.5, 3.5), size: rand(0.25, 0.35), grow: 2.5, color: '#f4f6f8', alpha: 0.35, drag: 0.3 });
+      }
+    }
+  }
+
   private adaptCooldown = 3;
   private adaptResolution() {
     this.adaptCooldown -= 1 / Math.max(10, this.fps);
@@ -435,7 +494,7 @@ export class Game {
   }
 
   vitality() {
-    let bloomed = 0;
+    let bloomed = this.settledTiles;
     for (const isl of this.islands) {
       if (!isl.unlocked) continue;
       for (let i = 0; i < isl.n; i++) bloomed += isl.stage[i] > 0 ? 1 : 0;
@@ -478,6 +537,7 @@ export class Game {
     if (!this.input.holding) {
       this.wonders.hover(this.raycaster.ray);
       this.creatures.hover(this.raycaster.ray);
+      this.critters.hover(this.raycaster.ray);
       for (const gf of this.goldenFlowers) {
         const p = this.decor.position(gf.ref);
         p.y += 0.3;
@@ -687,7 +747,7 @@ export class Game {
 
     // sound: soft thup + a quantized note
     this.sfx.bloom(pan, opts.cascade ? 0.7 : 1, 0.85 + h01 * 0.4);
-    if (!opts.quietNote) this.music.play(h01, TIMBRE[t.biome], pan, opts.cascade ? 0.75 : 0.95);
+    if (!opts.quietNote) this.music.play(h01, isl.style.timbre?.[t.biome] ?? TIMBRE[t.biome], pan, opts.cascade ? 0.75 : 0.95);
 
     // particles: leaves/petals burst + dust ring + sparkles
     const n = Math.round(CFG.petalCount * (opts.cascade ? 0.6 : 1));
@@ -700,7 +760,7 @@ export class Game {
         x: p.x + Math.cos(a) * 0.3, y: p.y + 0.1, z: p.z + Math.sin(a) * 0.3,
         vx: Math.cos(a) * sp, vy: rand(2.2, 4.2), vz: Math.sin(a) * sp,
         life: rand(0.9, 1.6), size: petal ? rand(0.13, 0.2) : rand(0.12, 0.18),
-        color: petal ? pick(FLOWER_COLORS) : t.biome === 'beach' ? pick(['#e9dcae', '#c9cf8a']) : pick(LEAF_COLORS),
+        color: petal ? pick(isl.flowers) : t.biome === 'beach' ? pick(['#e9dcae', '#c9cf8a']) : pick(isl.style.leaves ?? LEAF_COLORS),
         gravity: 4.5, drag: 2.2, shape: petal ? SHAPE.petal : SHAPE.leaf, spin: randSoft() * 8, flutter: 0.6,
       });
     }
@@ -746,7 +806,7 @@ export class Game {
       });
     }
     // hidden things
-    if (t.wonder) this.wonders.reveal(ii, i, false);
+    if (t.wonder && !(t.wonder === 'bottle' && this.collected.has('bottle'))) this.wonders.reveal(ii, i, false);
     if (t.spring) this.flowRiver(ii, t.river);
     this.checkRegion(ii, t.region, i);
   }
@@ -760,13 +820,13 @@ export class Game {
     const p = isl.worldPos(i, new THREE.Vector3());
     const pan = this.pan(p.x, p.y, p.z);
     this.sfx.rustle(pan, stage === 3 ? 1.2 : 0.8);
-    this.music.play(t.h / Math.max(1, isl.data.maxH) + 0.25, stage === 3 ? 'kalimba' : TIMBRE[t.biome], pan, 0.55);
+    this.music.play(t.h / Math.max(1, isl.data.maxH) + 0.25, stage === 3 ? 'kalimba' : isl.style.timbre?.[t.biome] ?? TIMBRE[t.biome], pan, 0.55);
     for (let k = 0; k < 6; k++) {
       const flowery = stage === 2 && (t.biome === 'meadow' || t.biome === 'blossom');
       this.particles.emit({
         x: p.x + randSoft() * 0.4, y: p.y + 0.2, z: p.z + randSoft() * 0.4,
         vx: randSoft() * 0.8, vy: rand(1.5, 3), vz: randSoft() * 0.8, life: rand(0.8, 1.3), size: rand(0.1, 0.15),
-        color: flowery ? pick(FLOWER_COLORS) : pick(LEAF_COLORS), gravity: 3.5, drag: 2.5,
+        color: flowery ? pick(isl.flowers) : pick(isl.style.leaves ?? LEAF_COLORS), gravity: 3.5, drag: 2.5,
         shape: flowery ? SHAPE.petal : SHAPE.leaf, spin: randSoft() * 6, flutter: 0.5,
       });
     }
@@ -802,7 +862,7 @@ export class Game {
         const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * radius;
         this.particles.emit({
           x: cx + Math.cos(a) * r, y: rand(7, 10), z: cz + Math.sin(a) * r, vx: rand(0.2, 0.6), vy: -rand(0.6, 1.1), vz: randSoft() * 0.3,
-          life: rand(6, 9), size: rand(0.14, 0.22), color: pick(FLOWER_COLORS), shape: SHAPE.petal, spin: randSoft() * 3, flutter: 0.9, drag: 0.2, gravity: 0.12,
+          life: rand(6, 9), size: rand(0.14, 0.22), color: pick(this.islands[this.focus]?.flowers ?? FLOWER_COLORS), shape: SHAPE.petal, spin: randSoft() * 3, flutter: 0.9, drag: 0.2, gravity: 0.12,
         });
       });
     }
@@ -906,6 +966,7 @@ export class Game {
     // landmark assembles itself, life arrives
     this.after(0.9, () => this.landmarks.build(ii, r, false));
     this.after(2.2, () => this.creatures.onRegion(ii, r));
+    this.eco.onRegionDone(ii, r);
     this.ui.updateProgress();
     if (isl.regionDone.every(Boolean)) this.after(3.2, () => this.completeIsland(ii));
     this.save();
@@ -937,8 +998,8 @@ export class Game {
       this.after(4.5, () => this.unlockIsland(next));
     } else if (next === ISLANDS.length && !this.freePlay) {
       this.after(5, () => this.finale());
-    } else if (next >= ISLANDS.length && next < MAX_ISLANDS && this.islands.length <= next) {
-      // the archipelago keeps growing, further out each time
+    } else if (next >= ISLANDS.length && this.islands.length <= next) {
+      // the archipelago keeps growing, further out each time, forever
       this.after(4.5, () => {
         this.addIsland(next);
         this.unlockIsland(next);
@@ -969,10 +1030,20 @@ export class Game {
       this.coastSplash(isl);
       this.redrawMask();
     });
+    const theme = isl.data.def.theme;
+    const firstOfTheme = ii >= ISLANDS.length && !this.themesSeen.has(theme);
+    this.themesSeen.add(theme);
     this.after(3.4, () => {
-      this.ui.islandName(isl.data.def.name);
+      this.ui.islandName(isl.data.def.name, ii >= ISLANDS.length ? THEME_STYLE[theme].label : '');
       this.rig.dist.target = 36 + isl.data.def.radius * 1.7;
+      if (firstOfTheme) {
+        // a new kind of island: a little welcome in its own key
+        this.music.swell(0.8);
+        this.after(0.6, () => this.music.arpeggio(THEME_STYLE[theme].timbre?.meadow ?? 'celesta', 6, 0.1, 7, 0.5));
+      }
     });
+    // older far islands drift out of memory once we've arrived (they stay in the journal)
+    if (ii >= ISLANDS.length) this.after(8, () => this.settleOld());
     // each island teaches one new thing
     if (ii === 1) {
       this.after(4.5, () => {
@@ -993,6 +1064,35 @@ export class Game {
     this.save();
   }
 
+  /** Keep the authored islands and the newest few far islands alive; settle the rest. */
+  settleOld() {
+    const newest = this.islands.length - 1;
+    for (let i = ISLANDS.length; i <= newest - LIVE_FAR; i++) {
+      const isl = this.islands[i];
+      if (!isl.settled && isl.complete && i !== this.focus) this.settleIsland(i);
+    }
+  }
+
+  settleIsland(ii: number) {
+    const isl = this.islands[ii];
+    if (isl.settled) return;
+    this.wonders.removeIsland(ii);
+    this.landmarks.removeIsland(ii);
+    this.critters.removeIsland(ii);
+    this.eco.removeIsland(ii);
+    this.creatures.removeIsland(ii, isl.cx, isl.cz, isl.radius);
+    this.goldenFlowers = this.goldenFlowers.filter((g) => g.isl !== ii);
+    this.springStones = this.springStones.filter((s) => s.ii !== ii);
+    for (let i = 0; i < isl.n; i++) if (isl.tiles[i].pond && isl.stage[i] > 0) this.amb.ponds = Math.max(0, this.amb.ponds - 1);
+    this.amb.rivers = Math.max(0, this.amb.rivers - this.riversFlowed[ii].filter(Boolean).length);
+    this.settledTiles += isl.n;
+    isl.settle();
+    this.redrawMask();
+  }
+
+  /** tiles restored on islands that have since settled (for the journal and vitality) */
+  settledTiles = 0;
+
   finale() {
     this.freePlay = true;
     this.music.swell(2);
@@ -1010,11 +1110,9 @@ export class Game {
     this.ui.finale();
     this.save();
     this.after(14, () => {
-      if (this.islands.length < MAX_ISLANDS) {
-        const n = this.islands.length;
-        this.addIsland(n);
-        this.unlockIsland(n);
-      }
+      const n = this.islands.length;
+      this.addIsland(n);
+      this.unlockIsland(n);
     });
   }
 
@@ -1072,7 +1170,11 @@ export class Game {
     return isl;
   }
 
-  private stoneMat = new THREE.MeshStandardMaterial({ color: '#b9b4ab', roughness: 0.9, flatShading: true });
+  private stoneMat = (() => {
+    const m = new THREE.MeshStandardMaterial({ color: '#b9b4ab', roughness: 0.9, flatShading: true });
+    m.userData.shared = true;
+    return m;
+  })();
   private buildSpringStones(ii: number) {
     const stoneMat = this.stoneMat;
     {
@@ -1193,6 +1295,11 @@ export class Game {
       }
     }
     if (this.creatures.tryTap(ray)) return;
+    const critter = this.critters.tryTap(ray);
+    if (critter) {
+      this.eco.onCritterTap(critter);
+      return;
+    }
     let best: { ii: number; i: number; d: number } | null = null;
     for (let ii = 0; ii < this.islands.length; ii++) {
       const isl = this.islands[ii];
@@ -1217,7 +1324,7 @@ export class Game {
     const t = isl.tiles[i];
     const p = isl.worldPos(i, new THREE.Vector3());
     if (isl.stage[i] > 0 && this.seedsUnlocked && !t.pond && t.river < 0 && !t.landmark) {
-      const kind = isl.pickTree(i) ?? (t.biome === 'beach' ? null : pick(['roundtree', 'birch', 'bush'] as const));
+      const kind = this.eco.pickPlant(ii, i);
       if (kind && isl.plantTree(i, kind)) {
         this.planted.push([ii, i, kind]);
         const pan = this.pan(p.x, p.y, p.z);
@@ -1227,7 +1334,7 @@ export class Game {
         isl.active.add(i);
         this.rig.kick(0, -0.6, 0);
         for (let k = 0; k < 8; k++) {
-          this.particles.emit({ x: p.x, y: p.y + 0.15, z: p.z, vx: randSoft() * 1.2, vy: rand(1.5, 3), vz: randSoft() * 1.2, life: 0.9, size: 0.13, color: pick(LEAF_COLORS), shape: SHAPE.leaf, gravity: 4, drag: 2, spin: 6, flutter: 0.5 });
+          this.particles.emit({ x: p.x, y: p.y + 0.15, z: p.z, vx: randSoft() * 1.2, vy: rand(1.5, 3), vz: randSoft() * 1.2, life: 0.9, size: 0.13, color: pick(isl.style.leaves ?? LEAF_COLORS), shape: SHAPE.leaf, gravity: 4, drag: 2, spin: 6, flutter: 0.5 });
         }
         this.creatures.onTree(ii, i);
         if (this.tutorial.tap) {
@@ -1288,7 +1395,11 @@ export class Game {
     const data: SaveData = {
       v: 1,
       unlocked: this.unlocked,
-      islands: this.islands.map((isl, ii) => ({
+      ev: 1,
+      legacy: legacyIslands(),
+      themes: [...this.themesSeen],
+      settledTiles: this.settledTiles,
+      islands: this.islands.map((isl, ii) => isl.settled ? { m: [], s: '', rd: [], rv: [], c: true, z: 1 } : ({
         m: Array.from(isl.moist, (m) => Math.round(m * 50) / 50),
         s: Array.from(isl.stage).join(''),
         rd: isl.regionDone.slice(),
@@ -1303,12 +1414,17 @@ export class Game {
       tod: this.env.tod,
       playTime: this.playTime,
       settings: { alwaysRain: this.input.alwaysRain, muted: this.audio.muted, music: CFG.musicVol, sfx: CFG.sfxVol, amb: CFG.ambVol },
+      eco: this.eco.save(),
     };
     writeSave(data);
   }
 
   private applySave(s: SaveData) {
-    while (this.islands.length < Math.min(MAX_ISLANDS, s.unlocked)) this.addIsland(this.islands.length);
+    // saves from before endless mode had up to 4 far islands on the old spiral layout
+    setLegacyIslands(s.ev ? s.legacy ?? 0 : Math.max(0, Math.min(8, s.unlocked) - ISLANDS.length));
+    while (this.islands.length < s.unlocked) this.addIsland(this.islands.length);
+    for (const t of s.themes || []) this.themesSeen.add(t as Theme);
+    this.settledTiles = s.settledTiles || 0;
     this.unlocked = s.unlocked;
     this.freePlay = !!s.freePlay;
     this.golden = s.golden || 0;
@@ -1325,6 +1441,11 @@ export class Game {
     s.islands.forEach((si, ii) => {
       const isl = this.islands[ii];
       if (!isl || ii >= s.unlocked) return;
+      if (si.z) {
+        this.springStones = this.springStones.filter((st) => st.ii !== ii);
+        isl.settle();
+        return;
+      }
       isl.unlocked = true;
       isl.rise.snap(0);
       si.m.forEach((m, i) => (isl.moist[i] = m));
@@ -1352,6 +1473,7 @@ export class Game {
       if (this.islands[ii]?.plantTree(i, kind as any, true)) this.planted.push([ii, i, kind]);
     }
     for (const [ii, i] of s.goldenTiles || []) this.spawnGolden(ii, i, true);
+    this.eco.load(s.eco);
     this.music.layers.drone = this.islands.some((isl) => isl.regionDone.some(Boolean));
     this.music.layers.harp = this.islands.some((isl) => isl.complete);
     if (this.seedsUnlocked) this.cloud.setLeaf(true);
