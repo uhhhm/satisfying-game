@@ -196,7 +196,7 @@ export class Game {
     this.started = true;
     this.audio.start();
     this.music.start();
-    this.rig.dist.target = 40;
+    this.rig.dist.target = this.unlocked > 1 ? 36 + this.islands[this.focus].data.def.radius * 1.7 : 40;
     this.rig.pitch.target = 0.9;
     this.rig.yaw.target = 0.55;
     const first = this.islands[0];
@@ -280,7 +280,19 @@ export class Game {
     this.holdTime = raining ? this.holdTime + dt : 0;
 
     // cloud height hugs the terrain below
+    // a cloud left alone gets sleepy; any touch wakes it
+    const idle = (performance.now() - Math.max(this.input.lastMove, this.input.lastDown)) / 1000;
+    const wasSleepy = this.cloud.sleep > 0.5;
+    this.cloud.sleep = damp(this.cloud.sleep, this.started && idle > 25 && !raining ? 1 : 0, idle > 25 ? 0.4 : 6, dt);
+    if (wasSleepy && this.cloud.sleep < 0.5) {
+      this.cloud.bounce(1.2);
+      this.sfx.ui(1.6);
+    }
     this.cloud.update(dt, this.cloudTarget, raining, this.rig.camera, this.env.night);
+    if (this.cloud.sleep > 0.8 && Math.random() < dt * 0.8) {
+      const c = this.cloud.pos;
+      this.particles.emit({ x: c.x + 0.6, y: c.y + 0.6, z: c.z, vx: 0.15, vy: 0.35, life: 2.6, size: rand(0.12, 0.2), grow: 1.8, color: '#ffffff', alpha: 0.8, shape: SHAPE.ring, flutter: 0.15, drag: 0.2 });
+    }
     const cp = this.cloud.pos;
     const R = lerp(CFG.rainRadius, CFG.rainRadiusMax, this.cloud.charge);
     U.uCloud.value.set(cp.x, cp.z, R * 0.95, this.cloud.raining);
@@ -452,7 +464,8 @@ export class Game {
   // ------------------------------------------------------------------ pointer
   private updatePointer() {
     if (!this.started) {
-      this.cloudTarget.set(-2, 9, 4);
+      const f = this.islands[this.focus];
+      this.cloudTarget.set(f.cx - 2, 9, f.cz + 4);
       return;
     }
     if (this.photo) return;
@@ -558,6 +571,11 @@ export class Game {
         if (st > 0) rate *= CFG.livingRateMul;
         // magnetism: almost-there tiles soak faster, so strokes "finish" things
         if (st === 0 && isl.moist[i] > 0.6) rate *= CFG.magnetBoost;
+        // drops patter on the plants: decor under the rain jiggles
+        if (st > 0 && isl.tileDecor[i].length && Math.random() < dt * 5 * w * mul) {
+          const refs = isl.tileDecor[i];
+          this.decor.kick(refs[Math.floor(Math.random() * refs.length)], rand(0.6, 1.4));
+        }
         if (st >= 3) {
           isl.touch(i);
           continue;
@@ -684,6 +702,17 @@ export class Game {
         vy: rand(0.4, 1.2), life: rand(0.6, 1.2), size: rand(0.09, 0.18), color: '#fff3c8', alpha: 0.75, shape: SHAPE.sparkle, drag: 1,
       });
     }
+    // every so often a bloom is a little luckier than the rest
+    if (!opts.cascade && Math.random() < 0.04) {
+      this.after(0.15, () => {
+        this.music.arpeggio('celesta', 4, 0.05, 11, 0.45, pan);
+        for (let k = 0; k < 16; k++) {
+          const a = Math.random() * Math.PI * 2;
+          this.glow.emit({ x: p.x, y: p.y + 0.3, z: p.z, vx: Math.cos(a) * rand(0.5, 1.6), vy: rand(1.5, 3), vz: Math.sin(a) * rand(0.5, 1.6), life: rand(1, 1.6), size: rand(0.12, 0.2), color: pick(['#ffe2ef', '#fff3c8', '#e2f6ff']), shape: SHAPE.sparkle, gravity: 1.2, drag: 1.5 });
+        }
+        this.creatures.onLush(ii, i, true);
+      });
+    }
     // camera: tiny downward nod
     this.rig.kick(randSoft() * 0.4, -1, randSoft() * 0.4);
     this.cloud.happy = Math.min(1, this.cloud.happy + 0.25);
@@ -742,7 +771,7 @@ export class Game {
   spawnGolden(ii: number, i: number, instant = false) {
     const isl = this.islands[ii];
     const t = isl.tiles[i];
-    const ref = this.decor.add('goldflower', t.x + isl.cx + randSoft() * 0.3, isl.group.position.y + t.h, t.z + isl.cz + randSoft() * 0.3, {
+    const ref = this.decor.add('goldflower', t.x + isl.cx + randSoft() * 0.3, t.h, t.z + isl.cz + randSoft() * 0.3, {
       tint: new THREE.Color('#ffd65a'), scale: 1.25, instant,
     });
     if (!ref) return;
@@ -753,6 +782,20 @@ export class Game {
       for (let k = 0; k < 12; k++) {
         this.glow.emit({ x: p.x, y: p.y + 0.3, z: p.z, vx: randSoft() * 1.2, vy: rand(0.5, 1.5), vz: randSoft() * 1.2, life: 1.2, size: 0.15, color: '#ffe08a', shape: SHAPE.sparkle, drag: 2 });
       }
+    }
+  }
+
+  /** Petals drifting down from the sky over an area for a while. */
+  petalShower(cx: number, cz: number, radius: number, seconds: number, rate = 30) {
+    const n = Math.round(seconds * rate);
+    for (let k = 0; k < n; k++) {
+      this.after((k / n) * seconds, () => {
+        const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * radius;
+        this.particles.emit({
+          x: cx + Math.cos(a) * r, y: rand(7, 10), z: cz + Math.sin(a) * r, vx: rand(0.2, 0.6), vy: -rand(0.6, 1.1), vz: randSoft() * 0.3,
+          life: rand(6, 9), size: rand(0.14, 0.22), color: pick(FLOWER_COLORS), shape: SHAPE.petal, spin: randSoft() * 3, flutter: 0.9, drag: 0.2, gravity: 0.12,
+        });
+      });
     }
   }
 
@@ -876,6 +919,7 @@ export class Game {
     this.rig.punch(2);
     this.rig.dist.target = Math.min(this.rig.maxDist, this.rig.dist.target * 1.18);
     this.creatures.birdBurst(isl.cx, isl.cz, 14);
+    this.petalShower(isl.cx, isl.cz, isl.radius * 0.8, 8, 25);
     this.ui.islandComplete(isl.data.def.name);
     this.after(2.2, () => this.addCloudlet(false));
     this.save();
@@ -952,6 +996,8 @@ export class Game {
       }
       this.creatures.birdBurst(isl.cx, isl.cz, 8);
     }
+    const f = this.islands[this.focus];
+    this.petalShower(f.cx, f.cz, f.radius, 16, 40);
     this.ui.finale();
     this.save();
     this.after(14, () => {
@@ -1141,7 +1187,7 @@ export class Game {
     let best: { ii: number; i: number; d: number } | null = null;
     for (let ii = 0; ii < this.islands.length; ii++) {
       const isl = this.islands[ii];
-      if (!isl.unlocked) continue;
+      if (!isl.unlocked || isl.group.position.y < -0.4) continue;
       const hits = this.raycaster.intersectObject(isl.caps, false);
       if (hits.length && hits[0].instanceId !== undefined && (!best || hits[0].distance < best.d)) {
         best = { ii, i: hits[0].instanceId, d: hits[0].distance };
@@ -1312,9 +1358,11 @@ export class Game {
     const fi = this.islands[f];
     this.rig.target.snap(fi.cx, 0.6, fi.cz);
     this.cloudTarget.set(fi.cx, 6, fi.cz);
-    this.cloud.setPosition(fi.cx - 20, 20, fi.cz + 14);
+    this.cloud.setPosition(fi.cx - 5, 14, fi.cz + 4);
+    this.autopilotUntil = 2.5;
     this.todTarget = ISLAND_TOD[Math.min(f, ISLAND_TOD.length - 1)];
     this.env.tod = this.freePlay ? this.env.tod : this.todTarget;
+    if (this.freePlay) this.todTarget = this.env.tod;
     this.env.vitality = this.vitality();
   }
 

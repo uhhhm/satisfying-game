@@ -7,6 +7,7 @@ export class Input {
   holding = false;
   hasPointer = false;
   lastMove = 0;
+  lastDown = 0;
   onTap: ((ndc: THREE.Vector2) => void) | null = null;
   onOrbit: ((dx: number, dy: number) => void) | null = null;
   onZoom: ((f: number) => void) | null = null;
@@ -43,6 +44,7 @@ export class Input {
   }
 
   private down(e: PointerEvent) {
+    this.lastDown = performance.now();
     if (!this.interacted) {
       this.interacted = true;
       this.onFirstInteract?.();

@@ -30,6 +30,7 @@ export class Cloud {
   private leafS = new Spring(0, 160, 10);
   private glowLight: THREE.PointLight;
   happy = 0;
+  sleep = 0;
   wobble = new Spring(0, 140, 7);
 
   constructor(scene: THREE.Scene) {
@@ -141,7 +142,8 @@ export class Cloud {
     this.material.emissiveIntensity = 0.35 + night * 0.25;
 
     for (const p of this.puffs) {
-      const breathe = 1 + Math.sin(this.t * 1.6 + p.phase) * 0.04 + Math.sin(this.t * 7 + p.phase) * 0.012 * this.raining;
+      const br = this.sleep > 0.3 ? 0.7 : 1.6;
+      const breathe = 1 + Math.sin(this.t * br + p.phase * (1 - this.sleep * 0.8)) * (0.04 + this.sleep * 0.03) + Math.sin(this.t * 7 + p.phase) * 0.012 * this.raining;
       p.sp.setParams(CFG.puffK * (0.6 + p.r * 0.6), CFG.puffC);
       const flat = 1 - this.raining * 0.08;
       p.sp.setTarget(
@@ -184,8 +186,9 @@ export class Cloud {
       this.eyeOpen.value = 0.1;
       this.eyeOpen.vel = 0;
     }
-    const squint = this.raining * 0.55 + this.happy * 0.6;
+    const squint = Math.max(this.raining * 0.55 + this.happy * 0.6, this.sleep * 0.93);
     this.eyeOpen.target = 1 - squint;
+    if (this.sleep > 0.5) this.blinkT = 3;
     this.eyeOpen.update(dt);
     this.happy = Math.max(0, this.happy - dt * 0.8);
 

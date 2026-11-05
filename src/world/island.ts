@@ -18,6 +18,8 @@ const BLOOM_FLASH = new THREE.Color('#fff6dc');
 
 const COL_BASE = -2.6;
 const DECOR_SCALE = 1.75;
+/** Every island rests at sea level once risen; decor is anchored there. */
+const REST_Y = 0;
 
 let sharedGeo: ReturnType<typeof buildTileGeometries> | null = null;
 
@@ -299,7 +301,7 @@ export class Island {
 
   private addDecor(i: number, kind: DecorKind, lx: number, lz: number, opts: { scale?: number; tint?: THREE.Color; delay?: number; instant?: boolean; stretch?: number } = {}) {
     const t = this.tiles[i];
-    const y = this.group.position.y + t.h + this.base[i];
+    const y = REST_Y + t.h + this.base[i];
     const ref = this.decor.add(kind, t.x + this.cx + lx, y, t.z + this.cz + lz, {
       scale: (opts.scale ?? 1) * DECOR_SCALE,
       tint: opts.tint,
@@ -489,7 +491,7 @@ export class Island {
     for (const ref of list) {
       if (ref.kind === 'lilypad' || ref.kind === 'flower') {
         const P = this.decor.pools[ref.kind];
-        P.py[ref.id] = this.group.position.y + this.tiles[i].h - 0.035 + dy;
+        P.py[ref.id] = REST_Y + this.tiles[i].h - 0.035 + dy;
       }
     }
   }

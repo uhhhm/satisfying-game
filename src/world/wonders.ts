@@ -47,7 +47,7 @@ export class Wonders {
     const t = isl.tiles[tile];
     if (!t.wonder || this.list.some((w) => w.ii === ii && w.tile === tile)) return;
     const g = new THREE.Group();
-    g.position.set(t.x + isl.cx + 0.15, isl.group.position.y + t.h, t.z + isl.cz - 0.1);
+    g.position.set(t.x + isl.cx + 0.15, t.h, t.z + isl.cz - 0.1);
     g.rotation.y = Math.random() * Math.PI * 2;
     const { anim, glow } = this.model(t.wonder, g);
     g.traverse((o) => {

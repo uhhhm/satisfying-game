@@ -122,11 +122,11 @@ export class Creatures {
   }
 
   // -------------------------------------------------------------- spawning hooks
-  onLush(ii: number, i: number) {
+  onLush(ii: number, i: number, force = false) {
     const isl = this.g.islands[ii];
     const t = isl.tiles[i];
-    if (!(t.biome === 'meadow' || t.biome === 'blossom' || t.biome === 'marsh')) return;
-    if (this.bflies.length >= 48 || Math.random() > 0.22) return;
+    if (!force && !(t.biome === 'meadow' || t.biome === 'blossom' || t.biome === 'marsh')) return;
+    if (this.bflies.length >= 48 || (!force && Math.random() > 0.22)) return;
     const p = isl.worldPos(i, new THREE.Vector3());
     const c = new THREE.Color(pick(['#fff2b3', '#ffffff', '#ffd1dc', '#cfe8ff', '#ffcf99', '#e6d4ff']));
     this.bflyMesh.setColorAt(this.bflies.length, c);
@@ -209,7 +209,7 @@ export class Creatures {
     const p = isl.worldPos(tile, new THREE.Vector3());
     p.x += randSoft() * 0.3;
     p.z += randSoft() * 0.3;
-    p.y = isl.group.position.y + isl.tiles[tile].h;
+    p.y = 0 + isl.tiles[tile].h;
     g.position.copy(p);
     const s: Sheep = {
       g, body, head, ii, tile, from: p.clone(), to: p.clone(), hopT: 1, hopDur: 0.45, idle: rand(1, 4),
@@ -342,7 +342,7 @@ export class Creatures {
             s.tile = j;
             s.from.copy(s.g.position);
             const p = isl.worldPos(j, new THREE.Vector3());
-            s.to.set(p.x + randSoft() * 0.3, isl.group.position.y + isl.tiles[j].h, p.z + randSoft() * 0.3);
+            s.to.set(p.x + randSoft() * 0.3, 0 + isl.tiles[j].h, p.z + randSoft() * 0.3);
             s.hopT = 0;
             s.hopDur = rand(0.4, 0.55);
             s.yaw = Math.atan2(s.to.x - s.from.x, s.to.z - s.from.z);
