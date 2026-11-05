@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { CFG } from '../core/config';
 import { worldToHex, key } from '../core/hex';
-import { RNG, Spring, clamp, pick } from '../core/math';
+import { RNG, Spring, clamp, pick, springStep as springStepLocal } from '../core/math';
 import { patchCap, patchWater } from '../core/shaders';
 import { DecorRef, DecorSystem } from './decor';
 import { IslandData, TileData } from './gen';
@@ -17,7 +17,7 @@ const _c2 = new THREE.Color();
 const BLOOM_FLASH = new THREE.Color('#fff6dc');
 
 const COL_BASE = -2.6;
-const DECOR_SCALE = 1.45;
+const DECOR_SCALE = 1.75;
 
 let sharedGeo: ReturnType<typeof buildTileGeometries> | null = null;
 
@@ -55,6 +55,13 @@ export class Island {
   complete = false;
   wet: Float32Array; // recent rain (for sheen)
   dryAttr: THREE.InstancedBufferAttribute;
+  links!: THREE.InstancedMesh;
+  private linkGeo: { ax: number; ay: number; az: number; bx: number; by: number; bz: number }[] = [];
+  private linkIds = new Map<string, number>();
+  private linkS = new Float32Array(0);
+  private linkV = new Float32Array(0);
+  private linkT = new Float32Array(0);
+  private linksAnimating = false;
   private rng: RNG;
   private time = 0;
 
@@ -126,6 +133,7 @@ export class Island {
     }
     this.cols.instanceColor!.needsUpdate = true;
     this.caps.instanceColor!.needsUpdate = true;
+    this.buildLinks();
   }
 
   get tiles(): TileData[] {
@@ -210,6 +218,64 @@ export class Island {
 
   lushTarget(i: number) {
     return this.stage[i] <= 1 ? 0 : this.stage[i] === 2 ? 0.55 : 1;
+  }
+
+  /** Water channel between consecutive river tiles (k → k+1); k = last is the fall into the sea. */
+  showLink(ri: number, k: number) {
+    const id = this.linkIds.get(`${ri}:${k}`);
+    if (id === undefined) return;
+    this.linkT[id] = 1;
+    this.linksAnimating = true;
+  }
+
+  private buildLinks() {
+    let n = 0;
+    for (const r of this.data.rivers) n += r.path.length;
+    const geo = new THREE.BoxGeometry(1, 0.05, 1);
+    this.links = new THREE.InstancedMesh(geo, this.water.material as THREE.Material, Math.max(1, n));
+    this.links.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.links.frustumCulled = false;
+    this.links.receiveShadow = true;
+    this.links.renderOrder = 2;
+    this.group.add(this.links);
+    let id = 0;
+    const T = this.tiles;
+    this.data.rivers.forEach((rv, ri) => {
+      rv.path.forEach((ti, k) => {
+        const a = T[ti];
+        let bx: number, bz: number, by: number;
+        if (k < rv.path.length - 1) {
+          const b = T[rv.path[k + 1]];
+          bx = b.x; bz = b.z; by = b.h - 0.03 - 0.12;
+        } else {
+          // fall into the sea, away from the island centre
+          const d = Math.hypot(a.x, a.z) || 1;
+          bx = a.x + (a.x / d) * 1.6; bz = a.z + (a.z / d) * 1.6; by = -0.05;
+        }
+        const ay = a.h - 0.03 - 0.12;
+        this.linkGeo.push({ ax: a.x, ay, az: a.z, bx, by, bz });
+        this.linkIds.set(`${ri}:${k}`, id++);
+      });
+    });
+    this.linkS = new Float32Array(id);
+    this.linkV = new Float32Array(id);
+    this.linkT = new Float32Array(id);
+    for (let i = 0; i < id; i++) this.writeLink(i);
+    this.links.count = id;
+  }
+
+  private writeLink(i: number) {
+    const L = this.linkGeo[i];
+    const s = Math.max(0.0001, this.linkS[i]);
+    const dx = L.bx - L.ax, dz = L.bz - L.az, dy = L.by - L.ay;
+    const len = Math.hypot(dx, dz);
+    const mid = new THREE.Vector3((L.ax + L.bx) / 2, (L.ay + L.by) / 2 + 0.005, (L.az + L.bz) / 2);
+    const yaw = Math.atan2(dx, dz);
+    const pitch = -Math.atan2(dy, len);
+    _q.setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
+    _s.set(0.62 * s, 1, Math.hypot(len, dy) * (0.35 + 0.65 * s));
+    _m.compose(mid, _q, _s);
+    this.links.setMatrixAt(i, _m);
   }
 
   makeRiver(i: number) {
@@ -488,6 +554,19 @@ export class Island {
         } else keep.push(h);
       }
       this.pendingHops = keep;
+    }
+    if (this.linksAnimating) {
+      let moving = false;
+      for (let i = 0; i < this.linkS.length; i++) {
+        if (this.linkT[i] === 0 && this.linkS[i] === 0) continue;
+        const [s2, v2] = springStepLocal(this.linkS[i], this.linkV[i], this.linkT[i], 70, 8, dt);
+        this.linkS[i] = s2;
+        this.linkV[i] = v2;
+        if (Math.abs(v2) > 0.001 || Math.abs(s2 - this.linkT[i]) > 0.001) moving = true;
+        this.writeLink(i);
+      }
+      this.links.instanceMatrix.needsUpdate = true;
+      this.linksAnimating = moving;
     }
     const k = CFG.tileK, c = CFG.tileC;
     const ck = CFG.colorK, cc = CFG.colorC;

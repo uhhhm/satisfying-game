@@ -16,8 +16,8 @@ const KEYS: TOD[] = [
   { t: 0.35, top: '#8bb4dc', hor: '#ebe6dc', sun: '#fff0d8', sunI: 2.4, hemiS: '#cfe0f0', hemiG: '#9a8f7e', hemiI: 1.0, fog: '#e1e4e1', night: 0, elev: 0.5, deep: '#5f9cbc', shallow: '#a9e0dc' },
   { t: 0.5, top: '#7cafdd', hor: '#e4ecef', sun: '#fffaf0', sunI: 2.6, hemiS: '#d2e4f2', hemiG: '#9d927f', hemiI: 1.0, fog: '#e2e9ec', night: 0, elev: 0.85, deep: '#5aa0c4', shallow: '#a6e3de' },
   { t: 0.68, top: '#87a3d0', hor: '#f6d6b2', sun: '#ffd39b', sunI: 2.3, hemiS: '#d8d6e6', hemiG: '#a08a74', hemiI: 0.95, fog: '#efd8c0', night: 0, elev: 0.38, deep: '#5e93b6', shallow: '#b2dccf' },
-  { t: 0.8, top: '#46558a', hor: '#efa58e', sun: '#ff9f7a', sunI: 1.3, hemiS: '#9a94b8', hemiG: '#6e5a5a', hemiI: 0.85, fog: '#c49594', night: 0.45, elev: 0.1, deep: '#3e6584', shallow: '#7aa9b2' },
-  { t: 0.9, top: '#141c36', hor: '#334064', sun: '#9fb2e0', sunI: 0.35, hemiS: '#4a5a85', hemiG: '#2a2838', hemiI: 0.75, fog: '#2e3857', night: 1, elev: 0.6, deep: '#1b3550', shallow: '#2f5d74' },
+  { t: 0.8, top: '#4a5a90', hor: '#f0b09a', sun: '#ffbe9c', sunI: 1.05, hemiS: '#aeb0d8', hemiG: '#7a6a78', hemiI: 1.1, fog: '#b99aa6', night: 0.45, elev: 0.12, deep: '#3e6584', shallow: '#7aa9b2' },
+  { t: 0.9, top: '#18213d', hor: '#3a4670', sun: '#a9bce8', sunI: 0.45, hemiS: '#5a6a98', hemiG: '#2e2c40', hemiI: 0.9, fog: '#2e3857', night: 1, elev: 0.6, deep: '#1b3550', shallow: '#2f5d74' },
   { t: 1.0, top: '#141c36', hor: '#334064', sun: '#9fb2e0', sunI: 0.35, hemiS: '#4a5a85', hemiG: '#2a2838', hemiI: 0.75, fog: '#2e3857', night: 1, elev: 0.6, deep: '#1b3550', shallow: '#2f5d74' },
 ];
 
@@ -81,14 +81,15 @@ uniform vec4 uRipples[6]; // x, z, t0, strength
 float hash2(vec2 p) { return fract(sin(dot(p, vec2(41.3, 289.1))) * 45758.5); }
 void main() {
   vec2 uv = (vWPos.xz - uMaskRect.xy) / uMaskRect.z;
-  float m = texture2D(uMask, uv).r;
-  float shallow = smoothstep(0.02, 0.6, m);
+  vec4 mk = texture2D(uMask, uv);
+  float m = mk.r;
+  float shallow = max(smoothstep(0.02, 0.6, m), smoothstep(0.05, 0.9, mk.g) * 0.55);
   vec3 col = mix(uDeep, uShallow, shallow);
   // lapping foam band near shore
   float band = smoothstep(0.32, 0.55, m) * (1.0 - smoothstep(0.62, 0.8, m));
   float wave = sin(m * 34.0 - uTime * 1.6) * 0.5 + 0.5;
   float foam = band * smoothstep(0.55, 0.95, wave);
-  foam += smoothstep(0.7, 0.8, m) * 0.85;
+  foam += smoothstep(0.78, 0.97, m) * 0.3;
   // gentle procedural wave highlights
   vec2 p = vWPos.xz * 0.7;
   float w = sin(p.x * 1.3 + uTime * 0.8) * sin(p.y * 1.1 - uTime * 0.6) + 0.5 * sin((p.x - p.y) * 2.1 + uTime * 1.3);
@@ -210,9 +211,11 @@ export class Environment {
     const tg = tmp.getContext('2d')!;
     tg.fillStyle = '#000';
     tg.fillRect(0, 0, S, S);
+    tg.globalCompositeOperation = 'lighter';
     for (const isl of islands) {
       const sub = isl.rise.target < -0.5;
-      tg.fillStyle = sub ? 'rgba(255,255,255,0.45)' : '#fff';
+      // risen land → red channel (foam + shallows), submerged → green (a faint hint only)
+      tg.fillStyle = sub ? 'rgb(0,255,0)' : 'rgb(255,0,0)';
       for (const t of isl.tiles) {
         const x = ((t.x + isl.cx - R.x) / R.z) * S;
         const y = ((t.z + isl.cz - R.y) / R.z) * S;
@@ -221,6 +224,7 @@ export class Environment {
         tg.fill();
       }
     }
+    tg.globalCompositeOperation = 'source-over';
     g.fillStyle = '#000';
     g.fillRect(0, 0, S, S);
     g.filter = 'blur(7px)';

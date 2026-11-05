@@ -70,6 +70,7 @@ export class Landmarks {
     // face away from island centre (toward the view of the sea)
     const out = Math.atan2(t.x, t.z);
     group.rotation.y = out + randSoft() * 0.3;
+    group.scale.setScalar(1.55);
     g.scene.add(group);
     const b: Built = { group, parts: [], spinners: [], smoke: [], bobbers: [], beams: [], ii, kind: reg.landmark, t: 0 };
     let order = 0;
@@ -214,7 +215,7 @@ export class Landmarks {
           add(cyl(0.025, 0.025, 0.5, 5), C.woodDark, [-0.2, -0.42, 0.2 + k * 0.22]);
         }
         const boat = new THREE.Group();
-        boat.position.set(0.48, -t.h + 0.02, 0.85);
+        boat.position.set(0.48, (-t.h + 0.03) / 1.55, 0.85);
         group.add(boat);
         add(box(0.22, 0.09, 0.56), C.teal, [0, 0, 0], { parent: boat });
         add(box(0.16, 0.02, 0.44), C.wood, [0, 0.08, 0], { parent: boat });

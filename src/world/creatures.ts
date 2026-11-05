@@ -225,8 +225,8 @@ export class Creatures {
   tryTap(ray: THREE.Ray): boolean {
     for (const s of this.sheep) {
       const p = s.g.position.clone();
-      p.y += 0.2;
-      if (ray.distanceSqToPoint(p) < 0.32 * 0.32) {
+      p.y += 0.3;
+      if (ray.distanceSqToPoint(p) < 0.4 * 0.4) {
         s.jumpV = 5.2;
         s.sq.vel = -6;
         const pan = this.g.pan(p.x, p.y, p.z);
@@ -362,7 +362,7 @@ export class Creatures {
       s.g.rotation.y += (((s.yaw - s.g.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI) * Math.min(1, dt * 6);
       const sq = s.sq.value;
       const pop = Math.max(0.0001, s.pop.value);
-      s.g.scale.set(pop * (1 - sq * 0.3), pop * (1 + sq), pop * (1 - sq * 0.3));
+      s.g.scale.set(1.4 * pop * (1 - sq * 0.3), 1.4 * pop * (1 + sq), 1.4 * pop * (1 - sq * 0.3));
       s.body.position.y = 0.17 + s.jump;
       s.head.position.y += (headY + s.jump - s.head.position.y) * Math.min(1, dt * 14);
     }

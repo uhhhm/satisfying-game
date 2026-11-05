@@ -77,8 +77,8 @@ export class Wonders {
   tryTap(ray: THREE.Ray): boolean {
     for (const w of this.list) {
       const p = w.g.position.clone();
-      p.y += 0.25;
-      if (ray.distanceSqToPoint(p) < 0.45 * 0.45) {
+      p.y += 0.35;
+      if (ray.distanceSqToPoint(p) < 0.6 * 0.6) {
         w.bounce.vel = 6;
         const pan = this.g.pan(p.x, p.y, p.z);
         if (!w.collected) {
@@ -112,7 +112,8 @@ export class Wonders {
       w.bounce.update(dt);
       const s = Math.max(0.0001, w.s.value);
       const b = w.bounce.value;
-      w.g.scale.set(s * (1 - b * 0.05), s * (1 + b * 0.12), s * (1 - b * 0.05));
+      const S = 1.5;
+      w.g.scale.set(S * s * (1 - b * 0.05), S * s * (1 + b * 0.12), S * s * (1 - b * 0.05));
       for (const m of w.glow) m.emissiveIntensity = 0.4 + night * 1.4 + Math.sin(w.t * 2) * 0.1;
       // idle animation per kind
       const a = w.anim;

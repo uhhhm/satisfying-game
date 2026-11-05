@@ -47,7 +47,7 @@ export function patchSway(mat: THREE.Material, glowAttr = false) {
         .replace(
           '#include <emissivemap_fragment>',
           `#include <emissivemap_fragment>
-           totalEmissiveRadiance += diffuseColor.rgb * uNight * 0.55 * smoothstep(0.15, 0.3, vGlowY);`,
+           totalEmissiveRadiance += diffuseColor.rgb * uNight * 0.9 * smoothstep(0.12, 0.24, vGlowY);`,
         );
     }
   };

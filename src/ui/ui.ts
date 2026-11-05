@@ -198,15 +198,11 @@ export class UI {
       .join('');
   }
 
-  private travel(i: number) {
+  travel(i: number) {
     const g = this.g;
-    const isl = g.islands[i];
-    if (!isl.unlocked) return;
+    if (!g.islands[i].unlocked) return;
     g.sfx.whoosh(1.4, 0.5);
-    g.focus = i;
-    g.cloud.setPosition(isl.cx, 8, isl.cz + 2);
-    g.rig.target.setTarget(isl.cx, 0.6, isl.cz);
-    this.islandName(isl.data.def.name, isl.complete ? 'restored' : '');
+    g.travelTo(i);
   }
 
   // ------------------------------------------------------------- panels

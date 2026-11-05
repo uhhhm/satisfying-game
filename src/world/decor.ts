@@ -70,17 +70,22 @@ export class DecorSystem {
   pools = {} as Record<DecorKind, Pool>;
   models: Record<DecorKind, DecorModel>;
   matTint: THREE.MeshStandardMaterial;
+  matGlow: THREE.MeshStandardMaterial;
   matFixed: THREE.MeshStandardMaterial;
 
   constructor(scene: THREE.Object3D) {
     this.models = buildDecorModels();
     // vertex colours * instance colour; tinted parts get instance colour
     this.matTint = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, flatShading: true });
+    this.matGlow = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, flatShading: true });
     this.matFixed = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, flatShading: true });
-    patchSway(this.matTint, true);
+    patchSway(this.matTint);
+    patchSway(this.matGlow, true);
     patchSway(this.matFixed);
+    const glowKinds: DecorKind[] = ['flower', 'tulip', 'mushroom', 'goldflower'];
     for (const k of Object.keys(this.models) as DecorKind[]) {
-      this.pools[k] = new Pool(k, this.models[k], { tint: this.matTint, fixed: this.matFixed }, scene);
+      const tint = glowKinds.includes(k) ? this.matGlow : this.matTint;
+      this.pools[k] = new Pool(k, this.models[k], { tint, fixed: this.matFixed }, scene);
     }
   }
 
@@ -105,7 +110,7 @@ export class DecorSystem {
     P.delay[id] = o.delay ?? 0;
     P.alive[id] = 1;
     for (const m of P.meshes) {
-      if (o.tint && m.material === this.matTint) m.setColorAt(id, o.tint);
+      if (o.tint && m.material !== this.matFixed) m.setColorAt(id, o.tint);
       m.count = Math.max(m.count, id + 1);
       m.visible = true;
       if (m.instanceColor) m.instanceColor.needsUpdate = true;
@@ -133,7 +138,7 @@ export class DecorSystem {
   setTint(ref: DecorRef, c: THREE.Color) {
     const P = this.pools[ref.kind];
     for (const m of P.meshes) {
-      if (m.material === this.matTint) {
+      if (m.material !== this.matFixed) {
         m.setColorAt(ref.id, c);
         m.instanceColor!.needsUpdate = true;
       }

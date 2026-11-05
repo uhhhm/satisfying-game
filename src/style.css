@@ -169,3 +169,7 @@ body.zen .btns button, body.photo .btns button { pointer-events: none; }
   .photobar .bar { gap: 10px; padding: 10px 12px; }
   .photobar input[type='range'] { width: 80px; }
 }
+
+/* hidden overlays must never swallow clicks */
+body:not(.photo) .photobar, body:not(.photo) .photobar * { pointer-events: none !important; }
+.panel:not(.show), .panel:not(.show) * { pointer-events: none !important; }

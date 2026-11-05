@@ -66,11 +66,20 @@ export class AudioEngine {
     return this.ctx.currentTime;
   }
 
-  async start() {
-    if (this.ctx.state !== 'running') await this.ctx.resume();
+  start() {
+    // never await resume(): some browsers only settle it on a later gesture
+    if (this.ctx.state !== 'running') this.ctx.resume().catch(() => {});
     if (!this.started) {
       this.started = true;
+      this.master.gain.cancelScheduledValues(this.now);
+      this.master.gain.setValueAtTime(0, this.now);
       this.master.gain.setTargetAtTime(this.muted ? 0 : CFG.masterVol, this.now, 1.2);
+      // keep trying to resume on any later gesture (iOS/Safari)
+      const kick = () => {
+        if (this.ctx.state !== 'running') this.ctx.resume().catch(() => {});
+      };
+      window.addEventListener('pointerdown', kick);
+      window.addEventListener('keydown', kick);
     }
   }
 

@@ -218,7 +218,8 @@ export function generateIsland(def: IslandDef): IslandData {
     const b = bnoise.fbm(t.x * 0.2, t.z * 0.2, 2);
     const nearWater = t.pond || t.neighbors.some((j) => tiles[j].pond || tiles[j].river >= 0);
     let biome: Biome = 'meadow';
-    if (t.coastDist === 0 && t.h <= 0.35) biome = 'beach';
+    const sandy = bnoise.get(t.x * 0.35 + 9, t.z * 0.35 - 4);
+    if (t.coastDist === 0 && t.h <= 0.35 && sandy > -0.15) biome = 'beach';
     else if (def.theme === 'meadow') biome = b > 0.28 ? 'forest' : 'meadow';
     else if (def.theme === 'forest') biome = b < -0.3 ? 'meadow' : 'forest';
     else if (def.theme === 'lakes') biome = nearWater || b > 0.25 ? 'marsh' : b < -0.35 ? 'forest' : 'meadow';
@@ -267,6 +268,7 @@ export function generateIsland(def: IslandDef): IslandData {
   const remap = new Map(used.map((r, i) => [r, i]));
   tiles.forEach((t) => (t.region = remap.get(t.region)!));
 
+  const usedCoastal = new Set<string>();
   const regions = used.map((oldR, ri) => {
     const mem = tiles.filter((t) => t.region === ri);
     const cx = seeds[oldR][0];
@@ -277,18 +279,21 @@ export function generateIsland(def: IslandDef): IslandData {
     const dom = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0] as Biome;
     const eligible = mem.filter((t) => !t.pond && t.river < 0 && !t.spring);
     eligible.sort((a, b) => {
-      const da = Math.hypot(a.x - cx, a.z - cz) - (coastal > 0.35 && a.coastDist === 0 ? 2 : 0);
-      const db = Math.hypot(b.x - cx, b.z - cz) - (coastal > 0.35 && b.coastDist === 0 ? 2 : 0);
+      const wantCoast = coastal > 0.35 && usedCoastal.size < 2;
+      const da = Math.hypot(a.x - cx, a.z - cz) - (wantCoast && a.coastDist === 0 ? 2 : 0) + (!wantCoast && a.coastDist === 0 ? 1.5 : 0);
+      const db = Math.hypot(b.x - cx, b.z - cz) - (wantCoast && b.coastDist === 0 ? 2 : 0) + (!wantCoast && b.coastDist === 0 ? 1.5 : 0);
       return da - db;
     });
     const lt = eligible[0] ?? mem[0];
     let kind: LandmarkKind;
-    if (lt.coastDist === 0 && coastal > 0.35) kind = rng.chance(0.6) ? 'lighthouse' : 'pier';
+    if (lt.coastDist === 0 && coastal > 0.35 && !usedCoastal.has('lighthouse')) kind = 'lighthouse';
+    else if (lt.coastDist === 0 && coastal > 0.35 && !usedCoastal.has('pier')) kind = 'pier';
     else if (dom === 'forest') kind = rng.pick(['greattree', 'shrine', 'cottage'] as const);
     else if (dom === 'highland') kind = rng.pick(['stones', 'pagoda', 'windmill'] as const);
     else if (dom === 'blossom') kind = rng.pick(['pagoda', 'shrine', 'cottage'] as const);
     else if (dom === 'marsh') kind = rng.pick(['well', 'windmill', 'cottage'] as const);
     else kind = rng.pick(['cottage', 'windmill', 'well', 'cottage'] as const);
+    if (kind === 'lighthouse' || kind === 'pier') usedCoastal.add(kind);
     lt.landmark = kind;
     return { tiles: mem.map((t) => t.i), landmarkTile: lt.i, landmark: kind, cx, cz };
   });

@@ -96,6 +96,9 @@ export class Game {
   private holdTime = 0;
   private rainbowCooldown = 0;
   private todTarget = ISLAND_TOD[0];
+  private springStones: { ii: number; ri: number; tile: number; crystal: THREE.Mesh; mat: THREE.MeshStandardMaterial; t: number }[] = [];
+  private tapHintShown = false;
+  autopilotUntil = 0;
   private grade = { sat: 0.85, warm: 0 };
 
   constructor(public canvas: HTMLCanvasElement) {
@@ -138,6 +141,7 @@ export class Game {
       this.islands.push(isl);
       this.riversFlowed.push(isl.data.rivers.map(() => false));
     }
+    this.buildSpringStones();
     this.landmarks = new Landmarks(this);
     this.creatures = new Creatures(this);
     this.wonders = new Wonders(this);
@@ -303,6 +307,7 @@ export class Game {
     for (const isl of this.islands) isl.update(dt);
     this.decor.update(dt);
     this.landmarks.update(dt);
+    this.updateSpringStones(dt);
     this.creatures.update(dt);
     this.wonders.update(dt);
     this.particles.update(dt, this.time);
@@ -400,7 +405,7 @@ export class Game {
       if (!isl.unlocked) continue;
       for (let i = 0; i < isl.n; i++) bloomed += isl.stage[i] > 0 ? 1 : 0;
     }
-    return 1 - Math.exp(-bloomed / 110);
+    return 1 - Math.exp(-bloomed / 90);
   }
 
   private updateFocus() {
@@ -427,6 +432,7 @@ export class Game {
       return;
     }
     if (this.photo) return;
+    if (this.time < this.autopilotUntil) return;
     if (!this.input.hasPointer) {
       // idle drift above the focus island
       return;
@@ -635,6 +641,13 @@ export class Game {
       this.tutorial.hold = false;
       this.ui.hint(null);
     }
+    // second island: teach planting once a few tiles are alive
+    if (this.tutorial.tap && ii >= 1 && !this.tapHintShown && !opts.cascade && !t.pond && t.river < 0) {
+      this.tapHintShown = true;
+      this.after(1.4, () => {
+        if (this.tutorial.tap) this.ui.hint('tap', { isl: ii, tile: i });
+      });
+    }
     // ponds fill with a splash
     if (t.pond) {
       this.after(0.1, () => {
@@ -833,7 +846,8 @@ export class Game {
     }
     // camera glides over, the land rises from the sea
     this.focus = ii;
-    this.cloudTarget.set(isl.cx, 6, isl.cz);
+    this.autopilotUntil = this.time + 4.2;
+    this.cloudTarget.set(isl.cx, 6.5, isl.cz + 1);
     this.rig.target.setTarget(isl.cx, 0.6, isl.cz);
     this.rig.dist.target = 52;
     this.sfx.whoosh(3, 0.8);
@@ -845,7 +859,7 @@ export class Game {
     });
     this.after(3.4, () => {
       this.ui.islandName(isl.data.def.name);
-      this.rig.dist.target = 38 + isl.data.def.radius * 1.6;
+      this.rig.dist.target = 36 + isl.data.def.radius * 1.7;
     });
     // each island teaches one new thing
     if (ii === 1) {
@@ -883,8 +897,68 @@ export class Game {
     this.save();
   }
 
+  /** Glide the cloud and camera to another island. */
+  travelTo(i: number, hold = 1.8) {
+    const isl = this.islands[i];
+    if (!isl.unlocked) return;
+    this.focus = i;
+    this.autopilotUntil = this.time + hold;
+    this.cloudTarget.set(isl.cx, 6.5, isl.cz + 1);
+    this.rig.target.setTarget(isl.cx, 0.6, isl.cz);
+    this.rig.dist.target = 36 + isl.data.def.radius * 1.7;
+    this.ui.islandName(isl.data.def.name, isl.complete ? 'restored' : '');
+  }
+
   get seedsUnlocked() {
     return this.unlocked >= 2;
+  }
+
+  private buildSpringStones() {
+    const stoneMat = new THREE.MeshStandardMaterial({ color: '#b9b4ab', roughness: 0.9, flatShading: true });
+    this.islands.forEach((isl, ii) => {
+      isl.data.rivers.forEach((rv, ri) => {
+        const ti = rv.path[0];
+        const t = isl.tiles[ti];
+        const g = new THREE.Group();
+        g.position.set(t.x, t.h, t.z);
+        const ring = 5;
+        for (let k = 0; k < ring; k++) {
+          const a = (k / ring) * Math.PI * 2;
+          const st = new THREE.Mesh(new THREE.DodecahedronGeometry(0.16, 0), stoneMat);
+          st.position.set(Math.cos(a) * 0.42, 0.06, Math.sin(a) * 0.42);
+          st.scale.set(1, 0.7 + (k % 2) * 0.4, 1);
+          st.castShadow = true;
+          g.add(st);
+        }
+        const mat = new THREE.MeshStandardMaterial({ color: '#bfefff', emissive: new THREE.Color('#7fd8ff'), emissiveIntensity: 0.8, roughness: 0.2, flatShading: true, transparent: true, opacity: 0.92 });
+        const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.2, 0), mat);
+        crystal.position.y = 0.45;
+        crystal.scale.set(1, 1.5, 1);
+        g.add(crystal);
+        isl.group.add(g);
+        this.springStones.push({ ii, ri, tile: ti, crystal, mat, t: Math.random() * 6 });
+      });
+    });
+  }
+
+  private updateSpringStones(dt: number) {
+    for (const s of this.springStones) {
+      s.t += dt;
+      const flowed = this.riversFlowed[s.ii][s.ri];
+      const isl = this.islands[s.ii];
+      s.crystal.rotation.y += dt * (flowed ? 0.4 : 1.1);
+      const pulse = flowed ? 0.15 : 0.5 + 0.5 * Math.sin(s.t * 2.4);
+      s.mat.emissiveIntensity = 0.5 + pulse * 0.9 + this.env.night;
+      s.crystal.position.y = 0.45 + Math.sin(s.t * 1.7) * 0.06 + isl.popY[s.tile];
+      if (isl.unlocked && isl.group.position.y > -0.3 && Math.random() < dt * (flowed ? 3 : 1.2)) {
+        const p = isl.worldPos(s.tile, new THREE.Vector3());
+        if (flowed) {
+          this.particles.emit({ x: p.x + randSoft() * 0.15, y: p.y + 0.1, z: p.z + randSoft() * 0.15, vx: randSoft() * 0.6, vy: rand(1.5, 2.4), vz: randSoft() * 0.6, life: 0.7, size: 0.07, color: '#e6f8ff', gravity: 6, drag: 0.6 });
+        } else {
+          this.glow.emit({ x: p.x + randSoft() * 0.3, y: p.y + rand(0.4, 0.9), z: p.z + randSoft() * 0.3, vy: 0.4, life: 1.2, size: 0.14, color: '#bdf0ff', shape: SHAPE.sparkle, drag: 1 });
+        }
+      }
+    }
   }
 
   // ------------------------------------------------------------------ rivers
@@ -895,6 +969,7 @@ export class Game {
     this.amb.rivers++;
     const path = isl.data.rivers[ri].path;
     if (instant) {
+      path.forEach((_, k) => isl.showLink(ri, k));
       for (const j of path) {
         isl.makeRiver(j);
         if (isl.stage[j] === 0) isl.setStage(j, 1, true);
@@ -916,6 +991,8 @@ export class Game {
     path.forEach((j, k) => {
       this.after(0.3 + k * 0.32, () => {
         isl.makeRiver(j);
+        if (k > 0) isl.showLink(ri, k - 1);
+        if (k === path.length - 1) this.after(0.3, () => isl.showLink(ri, k));
         isl.popV[j] += 1.2;
         const p = isl.worldPos(j, new THREE.Vector3());
         const pan = this.pan(p.x, p.y, p.z);
@@ -992,7 +1069,10 @@ export class Game {
           this.particles.emit({ x: p.x, y: p.y + 0.15, z: p.z, vx: randSoft() * 1.2, vy: rand(1.5, 3), vz: randSoft() * 1.2, life: 0.9, size: 0.13, color: pick(LEAF_COLORS), shape: SHAPE.leaf, gravity: 4, drag: 2, spin: 6, flutter: 0.5 });
         }
         this.creatures.onTree(ii, i);
-        this.tutorial.tap = false;
+        if (this.tutorial.tap) {
+          this.tutorial.tap = false;
+          this.ui.hint(null);
+        }
         return;
       }
     }
