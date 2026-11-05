@@ -8,7 +8,7 @@ import { Music } from '../audio/music';
 import { Ambience, Sfx } from '../audio/sfx';
 import { Environment } from '../world/env';
 import { DecorSystem, DecorRef } from '../world/decor';
-import { ISLANDS, generateIsland, Biome, WonderKind } from '../world/gen';
+import { ISLANDS, generateIsland, islandDef, MAX_ISLANDS, Biome, WonderKind } from '../world/gen';
 import { Island } from '../world/island';
 import { FLOWER_COLORS } from '../world/models';
 import { Landmarks } from '../world/landmarks';
@@ -17,7 +17,7 @@ import { Wonders, WONDER_INFO } from '../world/wonders';
 import { Particles, SHAPE } from '../fx/particles';
 import { Rain } from '../fx/rain';
 import { Post } from '../fx/post';
-import { Cloud } from './cloud';
+import { Cloud, Cloudlet } from './cloud';
 import { CameraRig } from './camera';
 import { Input } from './input';
 import { UI } from '../ui/ui';
@@ -49,6 +49,7 @@ export class Game {
   glow: Particles;
   rain: Rain;
   cloud: Cloud;
+  cloudlets: Cloudlet[] = [];
   input: Input;
   audio: AudioEngine;
   music: Music;
@@ -99,6 +100,8 @@ export class Game {
   private springStones: { ii: number; ri: number; tile: number; crystal: THREE.Mesh; mat: THREE.MeshStandardMaterial; t: number }[] = [];
   private tapHintShown = false;
   autopilotUntil = 0;
+  private magnet = 0;
+  private dripT = 3;
   private grade = { sat: 0.85, warm: 0 };
 
   constructor(public canvas: HTMLCanvasElement) {
@@ -135,13 +138,7 @@ export class Game {
     this.sfx = new Sfx(this.audio);
     this.amb = new Ambience(this.audio);
 
-    for (const def of ISLANDS) {
-      const isl = new Island(generateIsland(def), this.decor, this.scene);
-      isl.rise.snap(def.id === 0 ? -1.1 : -4.2);
-      this.islands.push(isl);
-      this.riversFlowed.push(isl.data.rivers.map(() => false));
-    }
-    this.buildSpringStones();
+    for (const def of ISLANDS) this.addIsland(def.id);
     this.landmarks = new Landmarks(this);
     this.creatures = new Creatures(this);
     this.wonders = new Wonders(this);
@@ -174,7 +171,7 @@ export class Game {
 
     const save = loadSave();
     if (save) this.applySave(save);
-    this.env.drawMask(this.islands);
+    this.redrawMask();
     if (new URLSearchParams(location.search).has('debug')) this.openDebug();
   }
 
@@ -210,7 +207,7 @@ export class Game {
         first.rise.target = 0;
         this.sfx.rumble(3.2);
         this.sfx.whoosh(2.6, 0.6);
-        this.env.drawMask(this.islands);
+        this.redrawMask();
         this.coastSplash(first);
       });
       this.after(2.2, () => this.ui.islandName(first.data.def.name));
@@ -291,11 +288,37 @@ export class Game {
 
     if (raining) this.applyRain(dt, R);
     this.updateDrops(dt, raining, R);
+    // baby clouds trail behind and help
+    let leader = cp, lv = this.cloud.vel;
+    for (const c of this.cloudlets) {
+      c.update(dt, leader, lv, this.rig.camera, raining);
+      const p = c.group.position;
+      if (raining) {
+        this.applyRain(dt, 1.1, p, 0.45);
+        if (Math.random() < dt * 40) {
+          const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * 0.9;
+          const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
+          const gy = this.groundY(x, z);
+          this.rain.spawn(x, p.y - 0.3, z, gy, gy < 0.1);
+        }
+      }
+      leader = p;
+      lv = this.cloud.vel;
+    }
     if (!raining && this.cloud.charge > 0.55 && this.rainbowCooldown <= 0) {
       this.rainbow();
       this.rainbowCooldown = 6;
     }
     this.rainbowCooldown -= dt;
+    // a resting cloud still drips now and then
+    if (this.started && !raining && !this.photo) {
+      this.dripT -= dt;
+      if (this.dripT <= 0) {
+        this.dripT = rand(1.5, 4.5);
+        const gy = this.groundY(cp.x, cp.z);
+        this.rain.spawn(cp.x + randSoft() * 0.4, cp.y - 0.6, cp.z + randSoft() * 0.4, gy, gy < 0.1 || this.isWaterAt(cp.x, cp.z), true);
+      }
+    }
 
     // slow life spread: living tiles gently wet their dry neighbours
     this.spreadAcc += dt;
@@ -328,7 +351,7 @@ export class Game {
     if (!this.ui.photoTodOverride) {
       if (this.freePlay) this.todTarget += dt / 600; // ten-minute days in free play
       else {
-        const base = ISLAND_TOD[this.focus];
+        const base = ISLAND_TOD[Math.min(this.focus, ISLAND_TOD.length - 1)];
         this.todTarget = this.focus === 3 ? lerp(0.77, 0.87, fi.progress()) : base;
       }
       // shortest path around the day circle
@@ -421,6 +444,7 @@ export class Game {
     });
     if (best !== this.focus) {
       this.focus = best;
+      this.redrawMask();
       this.ui.islandName(this.islands[best].data.def.name);
     }
   }
@@ -458,7 +482,31 @@ export class Game {
     tmpV2.set(hit.x - fi.cx, 0, hit.z - fi.cz);
     const maxR = fi.radius + 10;
     if (tmpV2.length() > maxR) tmpV2.setLength(maxR);
-    const x = fi.cx + tmpV2.x, z = fi.cz + tmpV2.z;
+    let x = fi.cx + tmpV2.x, z = fi.cz + tmpV2.z;
+    // magnetism: a resting cursor lets the rain drift toward the most nearly-finished dry tile
+    const still = performance.now() - this.input.lastMove > 350;
+    if (this.input.raining && still) {
+      const R = lerp(CFG.rainRadius, CFG.rainRadiusMax, this.cloud.charge) * 1.5;
+      let best = 0, bx = x, bz = z;
+      for (const isl of this.islands) {
+        if (!isl.unlocked || Math.hypot(x - isl.cx, z - isl.cz) > isl.radius + R) continue;
+        for (let i = 0; i < isl.n; i++) {
+          if (isl.stage[i] > 0) continue;
+          const t = isl.tiles[i];
+          const d = Math.hypot(t.x + isl.cx - x, t.z + isl.cz - z);
+          if (d > R) continue;
+          const score = (0.25 + isl.moist[i]) * (1 - d / R);
+          if (score > best) {
+            best = score;
+            bx = t.x + isl.cx;
+            bz = t.z + isl.cz;
+          }
+        }
+      }
+      this.magnet = damp(this.magnet, best > 0 ? 1 : 0, 2, 1 / 60);
+      x = lerp(x, bx, 0.45 * this.magnet);
+      z = lerp(z, bz, 0.45 * this.magnet);
+    } else this.magnet = 0;
     const gy = Math.max(this.maxGroundNear(x, z, 1.6), 0.3);
     this.cloudTarget.set(x, gy + CFG.cloudHeight + this.cloud.charge * 0.5, z);
   }
@@ -488,8 +536,7 @@ export class Game {
   }
 
   // ------------------------------------------------------------------ rain
-  private applyRain(dt: number, R: number) {
-    const cp = this.cloud.pos;
+  private applyRain(dt: number, R: number, cp: THREE.Vector3 = this.cloud.pos, mul = 1) {
     let overWater = 0, n = 0;
     for (let ii = 0; ii < this.islands.length; ii++) {
       const isl = this.islands[ii];
@@ -507,7 +554,7 @@ export class Game {
         n++;
         if (t.pond || t.river >= 0) overWater++;
         const st = isl.stage[i];
-        let rate = CFG.rainRate * w * dt * (0.8 + this.cloud.charge * 0.5);
+        let rate = CFG.rainRate * w * dt * (0.8 + this.cloud.charge * 0.5) * mul;
         if (st > 0) rate *= CFG.livingRateMul;
         // magnetism: almost-there tiles soak faster, so strokes "finish" things
         if (st === 0 && isl.moist[i] > 0.6) rate *= CFG.magnetBoost;
@@ -519,7 +566,7 @@ export class Game {
         isl.touch(i);
       }
     }
-    this.lastRainOverWater = n ? overWater / n : 0;
+    if (mul === 1) this.lastRainOverWater = n ? overWater / n : 0;
   }
 
   addMoisture(ii: number, i: number, amt: number) {
@@ -563,7 +610,7 @@ export class Game {
         });
       }
       if (d.water && Math.random() < 0.08) this.env.ripple(d.x, d.z, 0.35);
-      if (Math.random() < 0.25) this.sfx.plip(this.pan(d.x, d.gy, d.z), d.water, 0.9);
+      if (d.solo || Math.random() < 0.25) this.sfx.plip(this.pan(d.x, d.gy, d.z), d.water, d.solo ? 1.6 : 0.9);
     }
   }
 
@@ -604,8 +651,12 @@ export class Game {
     const pan = this.pan(p.x, p.y, p.z);
     const h01 = t.h / Math.max(1, isl.data.maxH);
 
-    // neighbours get a tiny shove so the pop feels physical
-    for (const j of t.neighbors) isl.hop(j, 0.05 + Math.random() * 0.03, 0.55, 0.08);
+    // neighbours get a tiny shove so the pop feels physical — and a sip of water,
+    // so soaked areas tend to finish in little chain reactions
+    for (const j of t.neighbors) {
+      isl.hop(j, 0.05 + Math.random() * 0.03, 0.55, 0.08);
+      if (isl.stage[j] === 0 && isl.moist[j] > 0.75) this.after(0.12 + Math.random() * 0.1, () => this.addMoisture(ii, j, 0.09));
+    }
 
     // sound: soft thup + a quantized note
     this.sfx.bloom(pan, opts.cascade ? 0.7 : 1, 0.85 + h01 * 0.4);
@@ -826,12 +877,19 @@ export class Game {
     this.rig.dist.target = Math.min(this.rig.maxDist, this.rig.dist.target * 1.18);
     this.creatures.birdBurst(isl.cx, isl.cz, 14);
     this.ui.islandComplete(isl.data.def.name);
+    this.after(2.2, () => this.addCloudlet(false));
     this.save();
     const next = ii + 1;
     if (next < this.islands.length && !this.islands[next].unlocked) {
       this.after(4.5, () => this.unlockIsland(next));
-    } else if (this.islands.every((x) => x.complete)) {
+    } else if (next === ISLANDS.length && !this.freePlay) {
       this.after(5, () => this.finale());
+    } else if (next >= ISLANDS.length && next < MAX_ISLANDS && this.islands.length <= next) {
+      // the archipelago keeps growing, further out each time
+      this.after(4.5, () => {
+        this.addIsland(next);
+        this.unlockIsland(next);
+      });
     }
   }
 
@@ -841,11 +899,12 @@ export class Game {
     this.unlocked = Math.max(this.unlocked, ii + 1);
     if (instant) {
       isl.rise.snap(0);
-      this.env.drawMask(this.islands);
+      this.redrawMask();
       return;
     }
     // camera glides over, the land rises from the sea
     this.focus = ii;
+    this.redrawMask();
     this.autopilotUntil = this.time + 4.2;
     this.cloudTarget.set(isl.cx, 6.5, isl.cz + 1);
     this.rig.target.setTarget(isl.cx, 0.6, isl.cz);
@@ -855,7 +914,7 @@ export class Game {
       isl.rise.target = 0;
       this.sfx.rumble(3.5);
       this.coastSplash(isl);
-      this.env.drawMask(this.islands);
+      this.redrawMask();
     });
     this.after(3.4, () => {
       this.ui.islandName(isl.data.def.name);
@@ -895,6 +954,32 @@ export class Game {
     }
     this.ui.finale();
     this.save();
+    this.after(14, () => {
+      if (this.islands.length < MAX_ISLANDS) {
+        const n = this.islands.length;
+        this.addIsland(n);
+        this.unlockIsland(n);
+      }
+    });
+  }
+
+  addCloudlet(instant: boolean) {
+    if (this.cloudlets.length >= 4) return;
+    const from = this.cloudlets.length ? this.cloudlets[this.cloudlets.length - 1].group.position : this.cloud.pos;
+    const c = new Cloudlet(this.scene, this.cloud.material, from.clone().add(new THREE.Vector3(0, 1.5, 0)), this.cloudlets.length);
+    this.cloudlets.push(c);
+    if (!instant) {
+      const p = from;
+      const pan = this.pan(p.x, p.y, p.z);
+      this.music.arpeggio('celesta', 6, 0.07, 9, 0.6, pan);
+      this.sfx.bloom(pan, 0.6, 2.2);
+      this.cloud.happy = 1;
+      this.cloud.bounce(1.5);
+      for (let k = 0; k < 20; k++) {
+        this.glow.emit({ x: p.x, y: p.y, z: p.z, vx: randSoft() * 2, vy: rand(0.5, 2), vz: randSoft() * 2, life: 1.3, size: 0.16, color: '#ffffff', shape: SHAPE.sparkle, drag: 2 });
+      }
+      this.ui.toast('<span class="ic">☁</span><span><b>A little cloud joined you</b><em>it rains where you rain</em></span>', 'wonder');
+    }
   }
 
   /** Glide the cloud and camera to another island. */
@@ -902,6 +987,7 @@ export class Game {
     const isl = this.islands[i];
     if (!isl.unlocked) return;
     this.focus = i;
+    this.redrawMask();
     this.autopilotUntil = this.time + hold;
     this.cloudTarget.set(isl.cx, 6.5, isl.cz + 1);
     this.rig.target.setTarget(isl.cx, 0.6, isl.cz);
@@ -913,9 +999,29 @@ export class Game {
     return this.unlocked >= 2;
   }
 
-  private buildSpringStones() {
-    const stoneMat = new THREE.MeshStandardMaterial({ color: '#b9b4ab', roughness: 0.9, flatShading: true });
-    this.islands.forEach((isl, ii) => {
+  redrawMask() {
+    const f = this.islands[this.focus] ?? this.islands[0];
+    this.env.maskRect.x = f.cx - 70;
+    this.env.maskRect.y = f.cz - 70;
+    this.env.drawMask(this.islands);
+  }
+
+  /** Generate + add island `i` to the world (submerged until unlocked). */
+  addIsland(i: number) {
+    const def = islandDef(i);
+    const isl = new Island(generateIsland(def), this.decor, this.scene);
+    isl.rise.snap(def.id === 0 ? -1.1 : -4.2);
+    this.islands.push(isl);
+    this.riversFlowed.push(isl.data.rivers.map(() => false));
+    this.buildSpringStones(this.islands.length - 1);
+    return isl;
+  }
+
+  private stoneMat = new THREE.MeshStandardMaterial({ color: '#b9b4ab', roughness: 0.9, flatShading: true });
+  private buildSpringStones(ii: number) {
+    const stoneMat = this.stoneMat;
+    {
+      const isl = this.islands[ii];
       isl.data.rivers.forEach((rv, ri) => {
         const ti = rv.path[0];
         const t = isl.tiles[ti];
@@ -938,7 +1044,7 @@ export class Game {
         isl.group.add(g);
         this.springStones.push({ ii, ri, tile: ti, crystal, mat, t: Math.random() * 6 });
       });
-    });
+    }
   }
 
   private updateSpringStones(dt: number) {
@@ -1147,6 +1253,7 @@ export class Game {
   }
 
   private applySave(s: SaveData) {
+    while (this.islands.length < Math.min(MAX_ISLANDS, s.unlocked)) this.addIsland(this.islands.length);
     this.unlocked = s.unlocked;
     this.freePlay = !!s.freePlay;
     this.golden = s.golden || 0;
@@ -1193,6 +1300,7 @@ export class Game {
     this.music.layers.drone = this.islands.some((isl) => isl.regionDone.some(Boolean));
     this.music.layers.harp = this.islands.some((isl) => isl.complete);
     if (this.seedsUnlocked) this.cloud.setLeaf(true);
+    this.islands.forEach((isl) => isl.complete && this.addCloudlet(true));
     if (typeof s.tod === 'number') this.env.tod = s.tod;
     // focus the furthest unlocked island that isn't finished
     let f = 0;
@@ -1205,8 +1313,8 @@ export class Game {
     this.rig.target.snap(fi.cx, 0.6, fi.cz);
     this.cloudTarget.set(fi.cx, 6, fi.cz);
     this.cloud.setPosition(fi.cx - 20, 20, fi.cz + 14);
-    this.todTarget = ISLAND_TOD[f];
-    this.env.tod = this.freePlay ? this.env.tod : ISLAND_TOD[f];
+    this.todTarget = ISLAND_TOD[Math.min(f, ISLAND_TOD.length - 1)];
+    this.env.tod = this.freePlay ? this.env.tod : this.todTarget;
     this.env.vitality = this.vitality();
   }
 

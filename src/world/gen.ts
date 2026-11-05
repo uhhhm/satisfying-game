@@ -62,6 +62,23 @@ export const ISLANDS: IslandDef[] = [
   { id: 3, name: 'Lanternfell', seed: 51, cx: -26, cz: -28, radius: 8.4, theme: 'highland', ponds: 2, springs: 2, wonders: ['lantern', 'moonlily', 'bell'] },
 ];
 
+const EXTRA_NAMES = ['Dewmere', 'Fernhollow', 'Thistledown', 'Willowisle', 'Mossbay', 'Brackenreach'];
+const THEMES: IslandDef['theme'][] = ['meadow', 'forest', 'lakes', 'highland'];
+export const MAX_ISLANDS = 8;
+
+/** Authored islands first, then the archipelago keeps growing outward. */
+export function islandDef(i: number): IslandDef {
+  if (i < ISLANDS.length) return ISLANDS[i];
+  const k = i - ISLANDS.length;
+  const a = 0.9 + k * 1.75;
+  const r = 50 + k * 9;
+  const theme = THEMES[(k + 1) % THEMES.length];
+  return {
+    id: i, name: EXTRA_NAMES[k % EXTRA_NAMES.length], seed: 101 + k * 17, cx: Math.cos(a) * r, cz: -20 + Math.sin(a) * r,
+    radius: 6 + (k % 3) * 0.6, theme, ponds: theme === 'lakes' ? 3 : 1, springs: theme === 'lakes' || theme === 'highland' ? 2 : 1, wonders: [],
+  };
+}
+
 const STEP = 0.24;
 
 export function generateIsland(def: IslandDef): IslandData {

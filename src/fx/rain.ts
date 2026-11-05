@@ -29,7 +29,7 @@ void main() {
 }`;
 
 export interface Drop {
-  x: number; y: number; z: number; vy: number; gy: number; water: boolean;
+  x: number; y: number; z: number; vy: number; gy: number; water: boolean; solo?: boolean;
 }
 
 export class Rain {
@@ -55,9 +55,9 @@ export class Rain {
     this.points.renderOrder = 11;
   }
 
-  spawn(x: number, y: number, z: number, groundY: number, water: boolean) {
+  spawn(x: number, y: number, z: number, groundY: number, water: boolean, solo = false) {
     if (this.drops.length >= this.max) return;
-    this.drops.push({ x, y, z, vy: -9 - Math.random() * 4, gy: groundY, water });
+    this.drops.push({ x, y, z, vy: solo ? -2 : -9 - Math.random() * 4, gy: groundY, water, solo });
   }
 
   /** Advances drops; returns the ones that landed this frame. */

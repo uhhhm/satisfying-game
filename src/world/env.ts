@@ -213,6 +213,7 @@ export class Environment {
     tg.fillRect(0, 0, S, S);
     tg.globalCompositeOperation = 'lighter';
     for (const isl of islands) {
+      if (Math.abs(isl.cx - (R.x + R.z / 2)) > R.z * 0.6 + 15 || Math.abs(isl.cz - (R.y + R.z / 2)) > R.z * 0.6 + 15) continue;
       const sub = isl.rise.target < -0.5;
       // risen land → red channel (foam + shallows), submerged → green (a faint hint only)
       tg.fillStyle = sub ? 'rgb(0,255,0)' : 'rgb(255,0,0)';

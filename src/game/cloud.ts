@@ -66,16 +66,18 @@ export class Cloud {
     this.body = new Spring3(0, CFG.cloudHeight, 0, CFG.cloudK, CFG.cloudC);
 
     // eyes: little dark ovals that face the camera
-    const eyeMat = new THREE.MeshBasicMaterial({ color: '#4a4f5c' });
+    const eyeMat = new THREE.MeshBasicMaterial({ color: '#4a4f5c', depthTest: false });
     const eyeGeo = new THREE.SphereGeometry(0.1, 12, 8);
     for (let i = 0; i < 2; i++) {
       const e = new THREE.Mesh(eyeGeo, eyeMat);
+      e.renderOrder = 20;
       this.eyes.push(e);
       this.group.add(e);
     }
-    const cheekMat = new THREE.MeshBasicMaterial({ color: '#f6b8c8', transparent: true, opacity: 0.55 });
+    const cheekMat = new THREE.MeshBasicMaterial({ color: '#f6b8c8', transparent: true, opacity: 0.55, depthTest: false });
     for (let i = 0; i < 2; i++) {
       const ch = new THREE.Mesh(new THREE.CircleGeometry(0.11, 14), cheekMat);
+      ch.renderOrder = 19;
       ch.name = 'cheek';
       this.group.add(ch);
     }
@@ -216,5 +218,88 @@ export class Cloud {
     this.glowLight.position.copy(this.pos).setY(this.pos.y - 1.2);
     this.glowLight.position.sub(this.group.position);
     this.glowLight.intensity = night * 6;
+  }
+}
+
+/** A baby cloud earned by restoring an island. Follows like a duckling, rains too. */
+export class Cloudlet {
+  group = new THREE.Group();
+  pos: Spring3;
+  private puffs: THREE.Mesh[] = [];
+  private offs: THREE.Vector3[] = [];
+  private eyes: THREE.Mesh[] = [];
+  private pop = new Spring(0, 140, 8);
+  private blink = Math.random() * 4;
+  private eyeOpen = new Spring(1, 300, 18);
+  private t = Math.random() * 10;
+  raining = 0;
+
+  constructor(scene: THREE.Scene, mat: THREE.Material, start: THREE.Vector3, public index: number) {
+    const geo = new THREE.IcosahedronGeometry(1, 2);
+    const layout: [number, number, number, number][] = [[0, 0, 0, 0.42], [0.36, -0.06, 0.05, 0.3], [-0.34, -0.05, -0.03, 0.3], [0.05, 0.2, -0.05, 0.28]];
+    for (const [x, y, z, r] of layout) {
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(x, y, z);
+      m.scale.setScalar(r);
+      m.castShadow = true;
+      this.group.add(m);
+      this.puffs.push(m);
+      this.offs.push(new THREE.Vector3(x, y, z));
+    }
+    const eyeMat = new THREE.MeshBasicMaterial({ color: '#4a4f5c', depthTest: false });
+    for (let i = 0; i < 2; i++) {
+      const e = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 6), eyeMat);
+      e.renderOrder = 20;
+      this.group.add(e);
+      this.eyes.push(e);
+    }
+    this.pos = new Spring3(start.x, start.y, start.z, 18 - index * 2.5, 6.5);
+    this.pop.target = 1;
+    this.group.scale.setScalar(0.0001);
+    scene.add(this.group);
+  }
+
+  update(dt: number, leader: THREE.Vector3, leaderVel: THREE.Vector3, camera: THREE.Camera, raining: boolean) {
+    this.t += dt;
+    // trail behind the leader, against its motion, fanned out a little
+    const back = leaderVel.clone().setY(0);
+    if (back.lengthSq() < 0.01) back.set(Math.sin(this.t * 0.3 + this.index), 0, Math.cos(this.t * 0.3 + this.index));
+    back.normalize().multiplyScalar(-1.4 - this.index * 0.15);
+    const side = new THREE.Vector3(-back.z, 0, back.x).normalize().multiplyScalar(Math.sin(this.t * 0.7 + this.index * 2) * 0.5);
+    this.pos.setTarget(leader.x + back.x + side.x, leader.y - 0.35 + Math.sin(this.t * 1.3 + this.index) * 0.15, leader.z + back.z + side.z);
+    this.pos.update(dt);
+    this.pop.update(dt);
+    this.raining += ((raining ? 1 : 0) - this.raining) * Math.min(1, dt * 6);
+    const s = Math.max(0.0001, this.pop.value);
+    this.group.position.set(this.pos.x.value, this.pos.y.value, this.pos.z.value);
+    this.group.scale.setScalar(s);
+    this.puffs.forEach((p, i) => {
+      const b = 1 + Math.sin(this.t * 2 + i) * 0.05;
+      p.position.copy(this.offs[i]);
+      p.position.y += Math.sin(this.t * 2.4 + i * 1.3) * 0.03;
+      p.scale.setScalar([0.42, 0.3, 0.3, 0.28][i] * b);
+    });
+    const toCam = new THREE.Vector3().subVectors(camera.position, this.group.position);
+    toCam.y *= 0.3;
+    toCam.normalize();
+    const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), toCam).normalize();
+    this.blink -= dt;
+    if (this.blink <= 0) {
+      this.blink = rand(2, 5);
+      this.eyeOpen.value = 0.1;
+      this.eyeOpen.vel = 0;
+    }
+    this.eyeOpen.target = 1 - this.raining * 0.6;
+    this.eyeOpen.update(dt);
+    this.eyes.forEach((e, i) => {
+      e.position.copy(toCam).multiplyScalar(0.42).addScaledVector(right, (i ? 1 : -1) * 0.12);
+      e.position.y += 0.02;
+      e.lookAt(camera.position);
+      e.scale.set(1, clamp(this.eyeOpen.value, 0.08, 1.2) * 1.2, 0.5);
+    });
+  }
+
+  bounce() {
+    this.pop.vel += 3;
   }
 }

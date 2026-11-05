@@ -502,8 +502,12 @@ export class Island {
   // ---------------------------------------------------------------- render
   private writeTile(i: number) {
     const t = this.tiles[i];
-    const top = t.h + this.popY[i] + this.base[i];
-    const sxz = 0.985 * (1 + this.sq[i]);
+    // anticipation: a nearly-soaked tile trembles just before it pops
+    const m0 = this.moist[i];
+    const quiver = this.stage[i] === 0 && m0 > 0.72 && this.wet[i] > 0.05
+      ? Math.sin(this.time * 46 + i * 1.7) * 0.012 * ((m0 - 0.72) / 0.28) : 0;
+    const top = t.h + this.popY[i] + this.base[i] + quiver;
+    const sxz = 0.985 * (1 + this.sq[i]) + Math.abs(quiver) * 0.6;
     // cap
     _p.set(t.x, top, t.z);
     _s.set(sxz, 1 - this.sq[i] * 1.5, sxz);

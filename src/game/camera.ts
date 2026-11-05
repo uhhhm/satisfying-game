@@ -49,7 +49,9 @@ export class CameraRig {
     this.dist.update(dt);
     this.kickOff.update(dt);
     this.fovPunch.update(dt);
-    const d = this.dist.value;
+    // portrait screens need to pull back to frame the island
+    const aspectZoom = Math.max(1, Math.pow(1.3 / this.camera.aspect, 0.6));
+    const d = this.dist.value * aspectZoom;
     const p = this.pitch.value;
     const y = this.yaw.value;
     const tx = this.target.x.value, ty = this.target.y.value, tz = this.target.z.value;
