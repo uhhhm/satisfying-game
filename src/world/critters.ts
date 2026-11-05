@@ -31,7 +31,7 @@ export interface Critter {
   hoverT: number;
 }
 
-interface Bee { hive: THREE.Vector3; a: number; r: number; speed: number; h: number; s: Spring; ph: number }
+interface Bee { ii: number; hive: THREE.Vector3; a: number; r: number; speed: number; h: number; s: Spring; ph: number }
 
 const SPEC: Record<CritterKind, { hop: number; dur: [number, number]; idle: [number, number]; scale: number; voice: 'frog' | 'duck' | 'squeak' | 'chirp' }> = {
   frog: { hop: 0.22, dur: [0.35, 0.45], idle: [3, 8], scale: 2.1, voice: 'frog' },
@@ -56,7 +56,7 @@ export class Critters {
   private lanternGeo: THREE.BufferGeometry;
   private beeMesh: THREE.InstancedMesh;
   private bees: Bee[] = [];
-  private props: { g: THREE.Group; s: Spring; bob: THREE.Object3D[]; t: number }[] = [];
+  private props: { ii: number; g: THREE.Group; s: Spring; bob: THREE.Object3D[]; t: number }[] = [];
 
   constructor(private game: Game) {
     const ico = (r: number, d = 0) => new THREE.IcosahedronGeometry(r, d);
@@ -203,10 +203,10 @@ export class Critters {
     g.add(m);
     g.position.set(t.x + isl.cx + local[0], this.ground(ii, tile) + 0.2, t.z + isl.cz + local[1]);
     g.rotation.y = Math.atan2(local[0], local[1]);
-    this.addProp(g, 2.1, instant, []);
+    this.addProp(ii, g, 2.1, instant, []);
     const n = 3;
     for (let k = 0; k < n && this.bees.length < 240; k++) {
-      const b: Bee = { hive: g.position.clone().add(new THREE.Vector3(0, 0.25, 0)), a: Math.random() * 6, r: rand(0.35, 0.9), speed: rand(1.2, 2) * (Math.random() < 0.5 ? -1 : 1), h: rand(0.1, 0.4), s: new Spring(instant ? 1 : 0, 120, 9), ph: Math.random() * 6 };
+      const b: Bee = { ii, hive: g.position.clone().add(new THREE.Vector3(0, 0.25, 0)), a: Math.random() * 6, r: rand(0.35, 0.9), speed: rand(1.2, 2) * (Math.random() < 0.5 ? -1 : 1), h: rand(0.1, 0.4), s: new Spring(instant ? 1 : 0, 120, 9), ph: Math.random() * 6 };
       b.s.target = 1;
       this.bees.push(b);
     }
@@ -232,17 +232,40 @@ export class Critters {
       g.add(l);
       bob.push(l);
     }
-    this.addProp(g, 1.55, instant, bob);
+    this.addProp(ii, g, 1.55, instant, bob);
   }
 
-  private addProp(g: THREE.Group, scale: number, instant: boolean, bob: THREE.Object3D[]) {
+  private addProp(ii: number, g: THREE.Group, scale: number, instant: boolean, bob: THREE.Object3D[]) {
     const s = new Spring(instant ? 1 : 0, 170, 10);
     s.target = 1;
     if (!instant) s.vel = 2;
     g.userData.scale = scale;
     g.scale.setScalar(instant ? scale : 0.0001);
     this.game.scene.add(g);
-    this.props.push({ g, s, bob, t: Math.random() * 10 });
+    this.props.push({ ii, g, s, bob, t: Math.random() * 10 });
+  }
+
+  /** Remove everything living on an unloaded island. */
+  removeIsland(ii: number) {
+    this.list = this.list.filter((c) => {
+      if (c.ii !== ii) return true;
+      c.g.parent?.remove(c.g);
+      return false;
+    });
+    this.bees = this.bees.filter((b) => b.ii !== ii);
+    this.beeMesh.count = this.bees.length;
+    this.props = this.props.filter((p) => {
+      if (p.ii !== ii) return true;
+      p.g.parent?.remove(p.g);
+      p.g.traverse((o) => {
+        const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+        if (m && this.glowMats.includes(m)) {
+          this.glowMats.splice(this.glowMats.indexOf(m), 1);
+          m.dispose();
+        }
+      });
+      return false;
+    });
   }
 
   // -------------------------------------------------------------- interaction

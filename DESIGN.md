@@ -63,7 +63,7 @@ precision. Loomlight is elegant but abstract: harder to love at a glance, harder
 | 2 | Wildwood | forest, mushrooms | **Seeds**: tap a living tile to plant a tree. The cloud wears a leaf. |
 | 3 | Mirrormere | lakes, marsh | **Springs**: rain on a glowing stone; a river runs to the sea and blooms everything it passes. |
 | 4 | Lanternfell | blossom highlands, dusk | **Night**: the sky turns to dusk. Blooms glow and release fireflies, and shrines light up. |
-| ∞ | The Archipelago | everything | Free play, a slow day/night cycle, all verbs. |
+| ∞ | The Archipelago | everything | Free play, a slow day/night cycle, all verbs. Endless new islands, including four new kinds of shore (autumn, frost, ember, oasis). |
 
 Finishing an island raises the next one out of the sea in the distance, and the camera glides over.
 Each island has three **Wonders** (a sleeping fox, a fairy ring, an old bell…). Most arrive with a
@@ -90,6 +90,21 @@ seeds become a paintbrush: what a tap plants depends on the spot (willows by wat
 shrines). **Visitors** appear after a grove is done, with a recipe in a thought bubble. Fulfil it
 and they move in and the grove's landmark flourishes; ignore them and nothing happens. Tapping a
 visitor makes the tiles that could answer it shimmer, which is the only "hint" in the system.
+
+## 5b. Endless mode
+
+The archipelago never runs out, but it should never feel like a treadmill either:
+
+- **Identity per island, not per number.** Each theme is one data entry (`world/themes.ts`): palette,
+  plants, landmarks, sky tint, musical key, ambience and drifting motes. Themes rotate without
+  repeating back to back; islands grow slowly up to Lanternfell's size.
+- **Same verbs, new textures.** No new mechanics arrive in endless mode. Rain, seeds, springs,
+  kinships and visitors all carry over, and each theme recolours them (palms by the water on an
+  oasis, gardens around an igloo).
+- **Small, finite collections.** Ten far-island wonders, tied to themes and kinships, so there's
+  always something to look for and nothing to grind.
+- **Bounded cost.** Only the authored islands and the four newest far islands stay loaded; older
+  ones settle into the journal. Draw calls, memory and the save stay flat however far you go.
 
 ## 6. Art direction
 

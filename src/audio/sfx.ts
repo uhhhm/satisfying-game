@@ -453,17 +453,27 @@ export class Ambience {
     this.rainBody.gain.setTargetAtTime(intensity * (0.1 + overWater * 0.08), t, 0.3);
   }
 
+  /** theme character, eased toward the focus island's (see world/themes.ts) */
+  style = { wind: 1, birds: 1, cicada: 0, bubbles: 0, tinkle: 0, rustle: 0 };
+  /** semitones from D, so the ice tinkles land in the music's key */
+  key = 0;
+  private nextBubble = 3;
+  private nextTinkle = 4;
+  private nextRustle = 5;
+
   update(dt: number, sfx: Sfx) {
     this.t += dt;
     const t = this.A.now;
+    const S = this.style;
     this.sea.gain.setTargetAtTime(0.22, t, 1);
-    this.wind.gain.setTargetAtTime(0.09 * (1 - this.life * 0.7), t, 2);
+    this.wind.gain.setTargetAtTime(0.09 * S.wind * (1 - this.life * 0.7 / Math.max(1, S.wind)), t, 2);
     this.river.gain.setTargetAtTime(Math.min(1, this.rivers * 0.35) * 0.05, t, 1);
     if (Math.random() < dt * 4) this.riverFilter.frequency.setTargetAtTime(600 + Math.random() * 900, t, 0.08);
-    this.crickets.gain.setTargetAtTime(this.night * this.life, t, 2);
+    // crickets at night; on an oasis, cicadas hum through the warm day too
+    this.crickets.gain.setTargetAtTime(this.night * this.life + S.cicada * this.life * 0.45 * (1 - this.night), t, 2);
 
     // birdsong rises with life and fades at night
-    this.nextBird -= dt * (0.15 + this.life * 1.3) * (1 - this.night * 0.9);
+    this.nextBird -= dt * (0.15 + this.life * 1.3) * (1 - this.night * 0.9) * S.birds;
     if (this.nextBird <= 0) {
       this.nextBird = 2 + Math.random() * 5;
       this.bird();
@@ -475,7 +485,32 @@ export class Ambience {
         this.frog();
       }
     }
-    void sfx;
+    // hot springs bubble (ember), ice tinkles (frost), dry leaves skitter (autumn)
+    if (S.bubbles > 0.05) {
+      this.nextBubble -= dt * S.bubbles;
+      if (this.nextBubble <= 0) {
+        this.nextBubble = 0.8 + Math.random() * 2.5;
+        const pan = (Math.random() - 0.5) * 1.2;
+        const n = 1 + Math.floor(Math.random() * 3);
+        for (let k = 0; k < n; k++) setTimeout(() => sfx.plip(pan, true, 0.5 + Math.random() * 0.3), k * 90);
+      }
+    }
+    if (S.tinkle > 0.05) {
+      this.nextTinkle -= dt * S.tinkle;
+      if (this.nextTinkle <= 0) {
+        this.nextTinkle = 3 + Math.random() * 6;
+        const P = [0, 2, 4, 7, 9];
+        const m = 86 + P[Math.floor(Math.random() * 5)] + this.key + (Math.random() < 0.3 ? 12 : 0);
+        this.A.note(this.A.now + 0.02, m, 0.07 + Math.random() * 0.05, 'glass', { pan: (Math.random() - 0.5) * 1.4, send: 0.8 });
+      }
+    }
+    if (S.rustle > 0.05) {
+      this.nextRustle -= dt * S.rustle * (0.5 + this.life);
+      if (this.nextRustle <= 0) {
+        this.nextRustle = 3 + Math.random() * 5;
+        sfx.rustle((Math.random() - 0.5) * 1.4, 0.35 + Math.random() * 0.25);
+      }
+    }
   }
 
   private bird() {

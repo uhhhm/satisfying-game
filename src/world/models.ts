@@ -103,7 +103,8 @@ export const BLOSSOM_COLORS = ['#f7c6d6', '#f3b2c8', '#fbd9e3', '#f0a9c0'];
 
 export type DecorKind =
   | 'grass' | 'flower' | 'tulip' | 'bush' | 'pine' | 'roundtree' | 'blossomtree' | 'mushroom'
-  | 'reeds' | 'cattail' | 'rock' | 'shell' | 'beachgrass' | 'lilypad' | 'fern' | 'birch' | 'goldflower' | 'willow';
+  | 'reeds' | 'cattail' | 'rock' | 'shell' | 'beachgrass' | 'lilypad' | 'fern' | 'birch' | 'goldflower' | 'willow'
+  | 'pumpkin' | 'snowpine' | 'palm' | 'cactus';
 
 export interface DecorModel {
   parts: { geo: THREE.BufferGeometry; tint: boolean }[];
@@ -239,6 +240,72 @@ export function buildDecorModels(): Record<DecorKind, DecorModel> {
     parts: [
       { geo: bake([{ geo: cyl(0.04, 0.065, 0.62, 5), color: PAL.trunk, rot: [0, 0, -0.12] }], 0.02), tint: false },
       { geo: bake(fronds, 0.09, 1.1), tint: true },
+    ],
+    shadow: true,
+  };
+  // pumpkin: ribbed, squat, with a curly stem (autumn)
+  const ribs: PartSpec[] = [];
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    ribs.push({ geo: ico(0.075, 1), color: i % 2 ? '#ffffff' : '#eeeeee', pos: [Math.cos(a) * 0.05, 0.065, Math.sin(a) * 0.05], scale: [0.9, 0.85, 0.9] });
+  }
+  M.pumpkin = {
+    parts: [
+      { geo: bake(ribs, 0), tint: true },
+      { geo: bake([{ geo: cyl(0.012, 0.018, 0.06, 5), color: '#6f8f4a', pos: [0, 0.12, 0], rot: [0, 0, 0.3] }, { geo: cone(0.03, 0.05, 3), color: '#7fb069', pos: [0.03, 0.13, 0], rot: [0, 0, -1.2] }], 0), tint: false },
+    ],
+    shadow: true,
+  };
+  // pine wearing snow on every tier (frost)
+  M.snowpine = {
+    parts: [
+      { geo: bake([trunk(0.3)], 0.02), tint: false },
+      {
+        geo: bake([
+          { geo: cone(0.32, 0.45, 6), color: '#e4e4e4', pos: [0, 0.2, 0] },
+          { geo: cone(0.25, 0.4, 6), color: '#f2f2f2', pos: [0, 0.42, 0] },
+          { geo: cone(0.17, 0.34, 6), color: '#ffffff', pos: [0, 0.64, 0] },
+        ], 0.05), tint: true,
+      },
+      {
+        geo: bake([
+          { geo: cone(0.2, 0.12, 6), color: '#f6fafc', pos: [0, 0.53, 0] },
+          { geo: cone(0.15, 0.1, 6), color: '#f6fafc', pos: [0, 0.73, 0] },
+          { geo: cone(0.1, 0.12, 6), color: '#ffffff', pos: [0, 0.88, 0] },
+        ], 0.05), tint: false,
+      },
+    ],
+    shadow: true,
+  };
+  // palm: a leaning, segmented trunk, drooping fronds and a few coconuts (oasis)
+  const palmTrunk: PartSpec[] = [];
+  for (let i = 0; i < 6; i++) palmTrunk.push({ geo: cyl(0.04 - i * 0.003, 0.05 - i * 0.003, 0.14, 6), color: i % 2 ? '#a58660' : '#b4946c', pos: [i * 0.018, i * 0.13, 0], rot: [0, 0, -0.12] });
+  const palmTop: PartSpec[] = [];
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2;
+    palmTop.push({ geo: cone(0.06, 0.42, 3), color: i % 2 ? '#ffffff' : '#eeeeee', pos: [0.11 + Math.cos(a) * 0.04, 0.8, Math.sin(a) * 0.04], rot: [Math.sin(a) * 1.9, 0, -Math.cos(a) * 1.9], scale: [1, 1, 0.3] });
+  }
+  M.palm = {
+    parts: [
+      { geo: bake([...palmTrunk, { geo: ico(0.035, 0), color: '#8b6a4e', pos: [0.13, 0.77, 0.04] }, { geo: ico(0.035, 0), color: '#7a5a40', pos: [0.08, 0.76, -0.04] }], 0.03), tint: false },
+      { geo: bake(palmTop, 0.12, 1.2), tint: true },
+    ],
+    shadow: true,
+  };
+  // cactus with a pink flower on top (oasis)
+  M.cactus = {
+    parts: [
+      {
+        geo: bake([
+          { geo: cyl(0.06, 0.07, 0.42, 7), color: '#ffffff' },
+          { geo: ico(0.06, 1), color: '#ffffff', pos: [0, 0.42, 0] },
+          { geo: cyl(0.035, 0.035, 0.14, 6), color: '#eeeeee', pos: [0.08, 0.15, 0], rot: [0, 0, -1.4] },
+          { geo: cyl(0.03, 0.035, 0.14, 6), color: '#eeeeee', pos: [0.14, 0.17, 0] },
+          { geo: cyl(0.03, 0.035, 0.1, 6), color: '#e8e8e8', pos: [-0.07, 0.22, 0], rot: [0, 0, 1.4] },
+          { geo: cyl(0.026, 0.03, 0.1, 6), color: '#e8e8e8', pos: [-0.12, 0.23, 0] },
+        ], 0.01), tint: true,
+      },
+      { geo: bake([{ geo: ico(0.035, 0), color: '#f49fae', pos: [0, 0.49, 0], scale: [1, 0.6, 1] }, { geo: ico(0.015, 0), color: '#fbe39a', pos: [0, 0.51, 0] }], 0.01), tint: false },
     ],
     shadow: true,
   };

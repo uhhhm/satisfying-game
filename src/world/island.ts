@@ -7,6 +7,7 @@ import { patchCap, patchWater } from '../core/shaders';
 import { DecorRef, DecorSystem } from './decor';
 import { IslandData, TileData } from './gen';
 import { DecorKind, FLOWER_COLORS, BLOSSOM_COLORS, PAL, buildTileGeometries } from './models';
+import { THEME_STYLE, ThemeStyle } from './themes';
 
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
@@ -66,17 +67,23 @@ export class Island {
   private linksAnimating = false;
   private rng: RNG;
   private time = 0;
+  style: ThemeStyle;
+  flowers: string[];
+  /** a settled island has been unloaded (endless mode keeps only recent ones alive) */
+  settled = false;
 
   constructor(public data: IslandData, public decor: DecorSystem, scene: THREE.Scene) {
     const T = data.tiles;
     this.n = T.length;
     this.rng = new RNG(data.def.seed * 31 + 7);
+    this.style = THEME_STYLE[data.def.theme];
+    this.flowers = this.style.flowers ?? FLOWER_COLORS;
     if (!sharedGeo) sharedGeo = buildTileGeometries();
     const capMat = new THREE.MeshStandardMaterial({ roughness: 0.92, metalness: 0, flatShading: true });
     patchCap(capMat);
     const colMat = new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true });
     const waterMat = new THREE.MeshStandardMaterial({
-      color: PAL.water, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.88,
+      color: this.style.water ? new THREE.Color(this.style.water) : PAL.water, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.88,
     });
     patchWater(waterMat);
     const capGeo = sharedGeo.cap.clone();
@@ -113,8 +120,10 @@ export class Island {
       const j = t.jitter;
       const r = new RNG(t.i * 977 + data.def.seed);
       const baseKey = t.pond ? 'marsh' : t.biome;
-      const a = (PAL as any)[t.biome === 'beach' ? 'sand' : baseKey].clone() as THREE.Color;
-      const l = (PAL as any)[t.biome === 'beach' ? 'sand' : baseKey + 'Lush'].clone() as THREE.Color;
+      const ck = (t.biome === 'beach' ? 'sand' : baseKey) as keyof NonNullable<ThemeStyle['colors']>;
+      const themed = this.style.colors?.[ck];
+      const a = themed ? new THREE.Color(themed[0]) : ((PAL as any)[ck].clone() as THREE.Color);
+      const l = themed ? new THREE.Color(themed[1]) : ((PAL as any)[t.biome === 'beach' ? 'sand' : baseKey + 'Lush'].clone() as THREE.Color);
       a.offsetHSL(r.soft() * 0.025, r.soft() * 0.06, r.soft() * 0.035);
       l.offsetHSL(r.soft() * 0.02, r.soft() * 0.05, r.soft() * 0.03);
       if (t.biome === 'beach') l.offsetHSL(0, 0.02, 0.02);
@@ -128,7 +137,8 @@ export class Island {
     for (let i = 0; i < this.n; i++) {
       this.writeTile(i);
       const t = T[i];
-      const soil = (t.biome === 'beach' ? PAL.sand.clone().multiplyScalar(0.86) : PAL.soil.clone())
+      const sand = this.style.colors?.sand ? new THREE.Color(this.style.colors.sand[0]) : PAL.sand.clone();
+      const soil = (t.biome === 'beach' ? sand.multiplyScalar(0.86) : this.style.soil ? new THREE.Color(this.style.soil) : PAL.soil.clone())
         .offsetHSL(0, 0, (t.jitter - 0.5) * 0.06);
       this.cols.setColorAt(i, soil);
       this.waterT[i] = 0;
@@ -160,6 +170,7 @@ export class Island {
   }
 
   tileAt(wx: number, wz: number): number {
+    if (this.settled) return -1;
     const [q, r] = worldToHex(wx - this.cx, wz - this.cz);
     const i = this.data.byKey.get(key(q, r));
     return i === undefined ? -1 : i;
@@ -316,7 +327,7 @@ export class Island {
   private grassTint(i: number, lift = 0) {
     const c = this.alive[i].clone();
     const t = this.tiles[i];
-    if (t.biome === 'beach') c.set('#c7cf8e');
+    if (t.biome === 'beach') c.set(this.style.colors?.sand ? this.style.colors.meadow?.[0] ?? '#c7cf8e' : '#c7cf8e');
     c.offsetHSL(0.01 + Math.random() * 0.02, 0.05, -0.08 + lift + Math.random() * 0.05);
     return c;
   }
@@ -391,6 +402,11 @@ export class Island {
       return;
     }
     if (stage === 2) {
+      const ex = this.style.extra?.[b];
+      if (ex && r.chance(ex.chance) && !special) {
+        const [x, z] = slot();
+        this.addDecor(i, ex.kind, x, z, o({ tint: new THREE.Color(pick(ex.tints)).offsetHSL(0, 0, rnd() * 0.05), scale: (ex.scale ?? 1) * (0.8 + r.next() * 0.4) }));
+      }
       if (b === 'beach') {
         const [x, z] = slot();
         this.addDecor(i, r.chance(0.5) ? 'shell' : 'beachgrass', x, z, o({ tint: new THREE.Color('#f3dccb') }));
@@ -398,11 +414,11 @@ export class Island {
       }
       if (b === 'meadow' || b === 'blossom') {
         const n = 2 + Math.floor(r.next() * 3);
-        const hue = pick(FLOWER_COLORS);
+        const hue = pick(this.flowers);
         for (let k = 0; k < n; k++) {
           const [x, z] = slot();
           const kind: DecorKind = r.chance(0.25) ? 'tulip' : 'flower';
-          const c = new THREE.Color(r.chance(0.7) ? hue : pick(FLOWER_COLORS));
+          const c = new THREE.Color(r.chance(0.7) ? hue : pick(this.flowers));
           this.addDecor(i, kind, x, z, o({ tint: c, scale: 0.75 + r.next() * 0.5 }));
         }
         if (r.chance(0.25) && !special) {
@@ -435,7 +451,7 @@ export class Island {
     if (stage === 3) {
       if (special) {
         const [x, z] = slot();
-        this.addDecor(i, 'flower', x, z, o({ tint: new THREE.Color(pick(FLOWER_COLORS)) }));
+        this.addDecor(i, 'flower', x, z, o({ tint: new THREE.Color(pick(this.flowers)) }));
         return;
       }
       const tree = this.pickTree(i);
@@ -450,6 +466,8 @@ export class Island {
   pickTree(i: number): DecorKind | null {
     const b = this.tiles[i].biome;
     const r = this.rng;
+    const themed = this.style.trees?.[b];
+    if (themed) return themed.length && (b !== 'beach' || r.chance(0.5)) ? pick(themed) : null;
     if (b === 'forest') return r.chance(0.55) ? 'pine' : r.chance(0.6) ? 'roundtree' : 'birch';
     if (b === 'blossom') return 'blossomtree';
     if (b === 'highland') return r.chance(0.55) ? 'pine' : null;
@@ -460,6 +478,8 @@ export class Island {
 
   treeTint(kind: DecorKind) {
     const r = this.rng;
+    const themed = this.style.treeTints?.[kind];
+    if (themed) return new THREE.Color(pick(themed)).offsetHSL(r.soft() * 0.015, 0, r.soft() * 0.03);
     if (kind === 'willow') return new THREE.Color(pick(['#a9cf7a', '#b6d68a', '#9cc77a'])).offsetHSL(0, 0, r.soft() * 0.03);
     if (kind === 'blossomtree') return new THREE.Color(pick(BLOSSOM_COLORS)).offsetHSL(0, 0, r.soft() * 0.03);
     if (kind === 'pine') return new THREE.Color('#5f9a63').offsetHSL(r.soft() * 0.02, 0, r.soft() * 0.05);
@@ -563,6 +583,7 @@ export class Island {
   }
 
   update(dt: number) {
+    if (this.settled) return;
     this.time += dt;
     this.rise.update(dt);
     const gy = this.rise.value;
@@ -654,6 +675,26 @@ export class Island {
       this.caps.instanceColor!.needsUpdate = true;
       this.dryAttr.needsUpdate = true;
     }
+  }
+
+  /** Unload: free the island's decor and GPU buffers and leave the scene. Its data stays for the save. */
+  settle() {
+    if (this.settled) return;
+    for (const list of this.tileDecor) for (const ref of list) this.decor.remove(ref);
+    this.tileDecor = this.tileDecor.map(() => []);
+    this.group.parent?.remove(this.group);
+    this.group.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      if (m.geometry !== sharedGeo?.col && m.geometry !== sharedGeo?.water) m.geometry.dispose();
+      const mats = Array.isArray(m.material) ? m.material : [m.material];
+      for (const mt of mats) if (!mt.userData.shared) mt.dispose();
+    });
+    this.active.clear();
+    this.pendingHops = [];
+    this.settled = true;
+    this.unlocked = false;
+    this.complete = true;
   }
 
   /** Mark a tile as touched by moisture (for colour + sheen updates). */

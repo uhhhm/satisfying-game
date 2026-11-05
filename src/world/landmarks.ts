@@ -229,6 +229,64 @@ export class Landmarks {
         add(cyl(0.015, 0.02, 0.25, 4), C.woodDark, [0, y - 0.1, 0]);
         break;
       }
+      case 'barn': {
+        add(box(0.8, 0.4, 0.56), '#c8563f', [0, 0, 0]);
+        add(prism(0.6, 0.36, 0.86), '#7a4a3a', [0, 0.4, 0]);
+        add(box(0.28, 0.3, 0.02), C.white, [0, 0, 0.29]);
+        add(box(0.24, 0.26, 0.025), '#a8443a', [0, 0.02, 0.295]);
+        add(box(0.03, 0.34, 0.03), C.white, [0, 0.0, 0.31], { rot: [0, 0, 0.72] });
+        add(box(0.12, 0.1, 0.02), C.window, [0, 0.48, 0.29], { glow: true });
+        add(cyl(0.11, 0.12, 0.55, 9), '#d9d2c4', [0.52, 0, -0.08]);
+        add(cone(0.13, 0.14, 9), '#7a4a3a', [0.52, 0.55, -0.08]);
+        break;
+      }
+      case 'haystack': {
+        for (const [x, z, sc] of [[0, 0, 1], [0.34, 0.18, 0.75], [-0.3, 0.22, 0.65]] as const) {
+          add(cyl(0.2 * sc, 0.24 * sc, 0.28 * sc, 9), '#e9c46a', [x, 0, z]);
+          add(cone(0.22 * sc, 0.26 * sc, 9), '#f2d27a', [x, 0.28 * sc, z]);
+        }
+        add(box(0.04, 0.5, 0.04), C.woodDark, [-0.1, 0, -0.36]);
+        add(box(0.24, 0.03, 0.03), C.woodDark, [-0.1, 0.38, -0.36]);
+        add(new THREE.IcosahedronGeometry(0.07, 0), '#e9c46a', [-0.1, 0.46, -0.36]);
+        add(box(0.1, 0.18, 0.06), '#7f9cc4', [-0.1, 0.22, -0.36]);
+        break;
+      }
+      case 'igloo': {
+        add(new THREE.SphereGeometry(0.38, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), '#f6fafc', [0, 0, 0]);
+        add(new THREE.CylinderGeometry(0.15, 0.17, 0.26, 10, 1, false, 0, Math.PI).rotateX(Math.PI / 2).rotateZ(Math.PI / 2).translate(0, 0, 0.0), '#eef4f8', [0, 0, 0.42], { rot: [0, Math.PI / 2, 0] });
+        add(box(0.16, 0.16, 0.02), C.window, [0, 0, 0.55], { glow: true });
+        for (let k = 0; k < 3; k++) add(new THREE.TorusGeometry(0.38 - k * 0.1 - 0.05, 0.006, 3, 18), '#d7e4ec', [0, 0.1 + k * 0.1, 0], { rot: [Math.PI / 2, 0, 0], scale: [1, 1, 1] });
+        break;
+      }
+      case 'cairn': {
+        const sizes = [0.22, 0.18, 0.15, 0.12, 0.09];
+        let y = 0;
+        sizes.forEach((r0, k) => {
+          add(new THREE.DodecahedronGeometry(r0, 0), k % 2 ? C.stone2 : C.stone, [randSoft() * 0.03, y + r0 * 0.55, randSoft() * 0.03], { scale: [1.2, 0.6, 1.1], rot: [0, k, 0] });
+          y += r0 * 1.05;
+        });
+        add(new THREE.OctahedronGeometry(0.05, 0), '#bfe6ff', [0, y + 0.05, 0], { glow: true });
+        break;
+      }
+      case 'stilthut': {
+        for (const [x, z] of [[0.24, 0.2], [-0.24, 0.2], [0.24, -0.2], [-0.24, -0.2]] as const) add(cyl(0.025, 0.03, 0.34, 5), C.woodDark, [x, 0, z]);
+        add(box(0.62, 0.04, 0.52), C.wood, [0, 0.34, 0]);
+        add(cyl(0.22, 0.24, 0.26, 8), '#c9a77c', [0, 0.38, 0]);
+        add(cone(0.36, 0.34, 8), '#b8945a', [0, 0.64, 0]);
+        add(box(0.1, 0.14, 0.02), C.window, [0, 0.42, 0.23], { glow: true });
+        for (let k = 0; k < 3; k++) add(box(0.12, 0.012, 0.04), C.wood, [0.32, 0.08 + k * 0.1, 0.24]);
+        break;
+      }
+      case 'tent': {
+        add(cyl(0.02, 0.02, 0.6, 5), C.woodDark, [0, 0, 0]);
+        add(cone(0.42, 0.46, 6), '#f3e6cc', [0, 0.06, 0]);
+        add(cone(0.43, 0.12, 6), '#d9826b', [0, 0.06, 0]);
+        add(box(0.16, 0.22, 0.02), '#7a4a3a', [0, 0.06, 0.36], { rot: [-0.62, 0, 0] });
+        add(box(0.5, 0.01, 0.34), '#c96a5a', [0.1, 0, 0.55]);
+        add(box(0.4, 0.012, 0.24), '#e9c46a', [0.1, 0.002, 0.55]);
+        add(box(0.06, 0.08, 0.06), C.lamp, [0.32, 0, 0.42], { glow: true });
+        break;
+      }
     }
     this.built.push(b);
     if (!instant) {
@@ -348,7 +406,62 @@ export class Landmarks {
         pot(0.38, 0.05, 1);
         break;
       }
+      case 'barn': {
+        pennant(0.52, 0.66, -0.08, C.white);
+        for (let k = 0; k < 3; k++) add(new THREE.IcosahedronGeometry(0.06, 1), ['#e98a3a', '#f2a65a', '#e07a3a'][k], [-0.45 + k * 0.13, 0.04, 0.42], { scale: [1.1, 0.8, 1.1] });
+        break;
+      }
+      case 'haystack': {
+        add(cyl(0.006, 0.006, 0.3, 3), C.woodDark, [0.15, 0.1, -0.36]);
+        for (let k = 0; k < 3; k++) add(new THREE.IcosahedronGeometry(0.055, 1), ['#e98a3a', '#f2a65a', '#d9826b'][k], [0.2 + k * 0.1, 0.04, -0.15], { scale: [1.1, 0.8, 1.1] });
+        pot(-0.4, -0.05, 4);
+        break;
+      }
+      case 'igloo': {
+        // a snowman keeps watch
+        add(new THREE.IcosahedronGeometry(0.1, 1), '#f6fafc', [0.45, 0.08, 0.25]);
+        add(new THREE.IcosahedronGeometry(0.07, 1), '#f6fafc', [0.45, 0.22, 0.25]);
+        add(cone(0.015, 0.06, 4), '#f2a65a', [0.45, 0.22, 0.31], { rot: [Math.PI / 2, 0, 0] });
+        add(cyl(0.05, 0.05, 0.06, 8), '#4b4f58', [0.45, 0.28, 0.25]);
+        add(box(0.03, 0.12, 0.03), '#d9826b', [0.4, 0.14, 0.31], { rot: [0, 0, 0.3] });
+        break;
+      }
+      case 'cairn': {
+        for (let k = 0; k < 5; k++) {
+          const a = (k / 5) * Math.PI * 2;
+          add(new THREE.IcosahedronGeometry(0.03, 0), flowers[k % flowers.length], [Math.cos(a) * 0.32, 0.03, Math.sin(a) * 0.32]);
+        }
+        add(cyl(0.006, 0.006, 0.38, 3), C.woodDark, [0.2, 0, 0]);
+        add(box(0.12, 0.08, 0.005), '#7f9cc4', [0.26, 0.32, 0]);
+        break;
+      }
+      case 'stilthut': {
+        for (const x of [-0.28, 0.28]) {
+          add(cyl(0.004, 0.004, 0.08, 3), C.woodDark, [x, 0.36, 0.26]);
+          add(new THREE.IcosahedronGeometry(0.045, 1), C.lamp, [x, 0.3, 0.26], { scale: [1, 1.25, 1], glow: true });
+        }
+        pot(-0.36, -0.3, 2);
+        break;
+      }
+      case 'tent': {
+        pennant(0, 0.58, 0, '#7f9cc4');
+        pot(-0.36, 0.3, 0);
+        add(new THREE.TorusGeometry(0.07, 0.012, 4, 10), '#5a5048', [-0.25, 0.01, 0.6], { rot: [Math.PI / 2, 0, 0] });
+        add(cyl(0.03, 0.03, 0.06, 6), '#c96a5a', [-0.25, 0.01, 0.6]);
+        break;
+      }
     }
+  }
+
+  /** Remove an unloaded island's landmarks. */
+  removeIsland(ii: number) {
+    this.built = this.built.filter((b) => {
+      if (b.ii !== ii) return true;
+      b.group.parent?.remove(b.group);
+      // geometry is per part; materials are cached and shared, so they stay
+      b.group.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
+      return false;
+    });
   }
 
   update(dt: number) {

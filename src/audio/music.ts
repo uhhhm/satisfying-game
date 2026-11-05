@@ -50,6 +50,14 @@ export class Music {
   private swellAmt = 0;
   private droneGain: GainNode | null = null;
   private timer: number | null = null;
+  /** transposition in semitones from D; changes land on the next chord, so the shift is gentle */
+  private key = 0;
+  private pendingKey = 0;
+
+  /** Move the whole score to another key (each island theme has its own). */
+  setKey(semis: number) {
+    this.pendingKey = semis;
+  }
 
   constructor(private A: AudioEngine) {
     const ctx = A.ctx;
@@ -69,7 +77,7 @@ export class Music {
   /** Scale table spanning D3..D7. */
   private scaleMidi(i: number) {
     const oct = Math.floor(i / 5);
-    return ROOT - 12 + oct * 12 + PENTA[((i % 5) + 5) % 5];
+    return ROOT - 12 + oct * 12 + PENTA[((i % 5) + 5) % 5] + this.key;
   }
 
   start() {
@@ -143,6 +151,7 @@ export class Music {
     const stepsPerChord = 32; // 2 bars of 4/4
     if (this.step > 0 && this.step % stepsPerChord === 0) {
       this.chordIdx = (this.chordIdx + 1) % CHORDS.length;
+      this.key = this.pendingKey;
       this.startChord(t);
     }
     const chord = CHORDS[this.chordIdx];
@@ -205,7 +214,7 @@ export class Music {
     if (this.layers.harp && this.step % 16 === 8 && Math.random() < 0.35 + this.vitality * 0.3) {
       const base = chord.notes;
       for (let i = 0; i < 4; i++) {
-        this.A.note(t + i * this.sixteenth, base[(i + 1) % base.length] + 12, 0.3, 'harp', {
+        this.A.note(t + i * this.sixteenth, base[(i + 1) % base.length] + 12 + this.key, 0.3, 'harp', {
           pan: -0.3 + i * 0.2,
         });
       }
@@ -220,7 +229,7 @@ export class Music {
     this.padVoices = [];
     const att = 2.4;
     chord.notes.forEach((m, i) => {
-      const f = mtof(m);
+      const f = mtof(m + this.key);
       const g = ctx.createGain();
       g.gain.setValueAtTime(0, t);
       g.gain.linearRampToValueAtTime(0.06 - i * 0.005, t + att);
@@ -263,7 +272,7 @@ export class Music {
       }
       const o = ctx.createOscillator();
       o.type = 'sine';
-      o.frequency.value = mtof(chord.bass);
+      o.frequency.value = mtof(chord.bass + this.key);
       const g = ctx.createGain();
       g.gain.setValueAtTime(0, t);
       g.gain.linearRampToValueAtTime(0.12, t + 1.5);

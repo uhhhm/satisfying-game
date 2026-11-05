@@ -5,7 +5,12 @@ const KEY = 'petrichor-save-v1';
 export interface SaveData {
   v: number;
   unlocked: number;
-  islands: { m: number[]; s: string; rd: boolean[]; rv: boolean[]; c: boolean }[];
+  islands: { m: number[]; s: string; rd: boolean[]; rv: boolean[]; c: boolean; z?: number }[];
+  /** endless-mode save (absent before it): how many far islands use the old layout, themes met */
+  ev?: number;
+  legacy?: number;
+  themes?: string[];
+  settledTiles?: number;
   planted: [number, number, string][];
   wonders: string[];
   golden: number;

@@ -17,7 +17,7 @@ import type { TileData } from '../world/gen';
 import type { DecorKind } from '../world/models';
 import type { Critter } from '../world/critters';
 import { FLOWER_COLORS } from '../world/models';
-import { KIN_INFO, KIN_ORDER, KIN_WONDERS, KinRule } from '../world/kinships';
+import { KIN_INFO, KIN_ORDER, KinRule, kinWonderFor } from '../world/kinships';
 
 export interface Kin {
   ii: number;
@@ -43,6 +43,10 @@ export interface EcoSave {
   kin: [number, KinRule, number, number][];
   /** island, grove, rule, tile, satisfied */
   vis: [number, number, KinRule, number, number][];
+  /** totals from unloaded islands, and every kinship ever discovered */
+  sk?: Partial<Record<KinRule, number>>;
+  sr?: number;
+  disc?: KinRule[];
 }
 
 const FLOWERY = new Set(['meadow', 'blossom', 'highland']);
@@ -50,6 +54,9 @@ const FLOWERY = new Set(['meadow', 'blossom', 'highland']);
 const groundOK = (t: TileData) => !t.pond && t.river < 0 && !t.landmark && t.biome !== 'beach';
 const floweryOK = (t: TileData) => groundOK(t) && FLOWERY.has(t.biome);
 const waterOK = (t: TileData) => t.pond || t.river >= 0;
+/** homes a garden can grow around */
+const HOMES = ['cottage', 'barn', 'stilthut', 'tent', 'igloo'];
+const isHome = (t: TileData) => !!t.landmark && HOMES.includes(t.landmark);
 
 const tmp = new THREE.Vector3();
 
@@ -65,6 +72,9 @@ export class Ecosystem {
   /** the first scan after starting is silent (catches up older saves without a parade) */
   private silent = true;
   private everVisited = false;
+  /** kinships and residents on islands that have since been unloaded */
+  settledKins: Partial<Record<KinRule, number>> = {};
+  settledResidents = 0;
 
   constructor(private g: Game) {}
 
@@ -102,7 +112,7 @@ export class Ecosystem {
       case 'reedbed':
         return this.water(isl, i) && nb.filter((j) => groundOK(isl.tiles[j]) && isl.stage[j] >= 2).length >= 2 ? i : -1;
       case 'garden': {
-        if (!this.built(isl, i, ['cottage'])) return -1;
+        if (!this.built(isl, i, HOMES)) return -1;
         const f = nb.filter((j) => this.flowery(isl, j));
         return f.length >= 2 ? f[0] : -1;
       }
@@ -124,7 +134,7 @@ export class Ecosystem {
         case 'hollow': return groundOK(t) && nb.some(waterOK);
         case 'thicket': return groundOK(t) && nb.filter(groundOK).length >= 2;
         case 'reedbed': return waterOK(t) && nb.filter(groundOK).length >= 2;
-        case 'garden': return t.landmark === 'cottage' && nb.filter(floweryOK).length >= 2;
+        case 'garden': return isHome(t) && nb.filter(floweryOK).length >= 2;
         case 'lanterns': return (t.landmark === 'shrine' || t.landmark === 'pagoda') && nb.some(groundOK);
       }
     });
@@ -297,7 +307,7 @@ export class Ecosystem {
       }
     }
     // some kinships are where a wonder has been waiting
-    const wk = KIN_WONDERS[kin.ii]?.[kin.rule];
+    const wk = kinWonderFor(kin.ii, isl.data.def.theme, kin.rule, g.collected);
     if (wk && !g.wonders.list.some((w) => w.kind === wk)) {
       const onPayload = kin.rule === 'garden' || kin.rule === 'lanterns' || wk === 'turtle';
       const tile = onPayload ? b : a;
@@ -314,7 +324,7 @@ export class Ecosystem {
   }
 
   private updateMusic() {
-    const residents = this.visitors.filter((v) => v.satisfied).length;
+    const residents = this.visitors.filter((v) => v.satisfied).length + this.settledResidents;
     this.g.music.layers.kin = this.discovered.size + Math.min(4, residents * 0.5);
   }
 
@@ -434,7 +444,7 @@ export class Ecosystem {
         case 'hollow': ok = groundOK(t) && nb.some(waterOK); break;
         case 'thicket': ok = groundOK(t) && nb.filter(groundOK).length >= 2; break;
         case 'reedbed': ok = waterOK(t); break;
-        case 'garden': ok = floweryOK(t) && nb.some((x) => x.landmark === 'cottage'); break;
+        case 'garden': ok = floweryOK(t) && nb.some(isHome); break;
         case 'lanterns': ok = groundOK(t) && nb.some((x) => x.landmark === 'shrine' || x.landmark === 'pagoda'); break;
       }
       if (!ok || n > 8) continue;
@@ -467,14 +477,36 @@ export class Ecosystem {
   pickPlant(ii: number, i: number): DecorKind | null {
     const isl = this.g.islands[ii];
     const t = isl.tiles[i];
-    if (t.biome === 'beach') return null;
+    const theme = isl.data.def.theme;
+    const themed = isl.style.trees?.[t.biome];
+    if (t.biome === 'beach') return theme === 'oasis' ? pick(['palm', 'cactus'] as const) : null;
     const nb = t.neighbors;
     if (t.biome === 'blossom' || nb.some((j) => this.built(isl, j, ['shrine', 'pagoda']))) return 'blossomtree';
-    if (nb.some((j) => this.water(isl, j))) return 'willow';
+    if (nb.some((j) => this.water(isl, j))) return theme === 'oasis' ? 'palm' : theme === 'frost' ? 'birch' : 'willow';
+    if (themed?.length) return pick(themed);
     if (t.biome === 'forest') return pick(['pine', 'pine', 'roundtree', 'birch'] as const);
     if (t.biome === 'highland') return pick(['pine', 'blossomtree'] as const);
     if (t.biome === 'marsh') return pick(['willow', 'birch'] as const);
     return pick(['roundtree', 'roundtree', 'birch'] as const);
+  }
+
+  /** Forget an unloaded island's kinships and visitors (the journal keeps the counts). */
+  removeIsland(ii: number) {
+    for (const k of this.kins) if (k.ii === ii) this.settledKins[k.rule] = (this.settledKins[k.rule] ?? 0) + 1;
+    this.kins = this.kins.filter((k) => k.ii !== ii);
+    this.queue = this.queue.filter((k) => k.ii !== ii);
+    this.visitors = this.visitors.filter((v) => {
+      if (v.ii !== ii) return true;
+      if (v.satisfied) this.settledResidents++;
+      v.bubble?.remove();
+      return false;
+    });
+    this.updateMusic();
+  }
+
+  /** How many of a kinship have ever formed, including on unloaded islands. */
+  count(rule: KinRule) {
+    return this.kins.filter((k) => k.rule === rule).length + (this.settledKins[rule] ?? 0);
   }
 
   // ---------------------------------------------------------------- debug
@@ -487,6 +519,9 @@ export class Ecosystem {
   // ---------------------------------------------------------------- save
   save(): EcoSave {
     return {
+      sk: this.settledKins,
+      sr: this.settledResidents,
+      disc: [...this.discovered],
       kin: this.kins.map((k) => [k.ii, k.rule, k.anchor, k.payload]),
       vis: this.visitors.map((v) => [v.ii, v.region, v.rule, v.tile, v.satisfied ? 1 : 0]),
     };
@@ -495,6 +530,9 @@ export class Ecosystem {
   load(d: EcoSave | undefined) {
     const g = this.g;
     if (!d) return;
+    this.settledKins = typeof d.sk === 'object' && d.sk ? d.sk : {};
+    this.settledResidents = d.sr ?? 0;
+    for (const r of d.disc ?? []) if (KIN_INFO[r]) this.discovered.add(r);
     for (const [ii, rule, anchor, payload] of d.kin || []) {
       const isl = g.islands[ii];
       if (!isl?.unlocked || !KIN_INFO[rule] || anchor >= isl.n || payload >= isl.n) continue;

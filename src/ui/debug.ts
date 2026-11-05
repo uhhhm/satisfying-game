@@ -83,8 +83,12 @@ export class DebugPanel {
         if (r >= 0) isl.data.regions[r].tiles.forEach((j, k) => g.after(k * 0.05, () => g.bloom(g.focus, j, { cascade: true })));
       },
       'unlock next island': () => {
-        const n = g.islands.findIndex((x) => !x.unlocked);
-        if (n >= 0) g.unlockIsland(n);
+        let n = g.islands.findIndex((x) => !x.unlocked && !x.settled);
+        if (n < 0) {
+          n = g.islands.length;
+          g.addIsland(n);
+        }
+        g.unlockIsland(n);
       },
       'visitor now': () => g.eco.debugVisitor(),
       'lush everything': () => {

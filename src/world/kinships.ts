@@ -2,6 +2,7 @@
 // between them. Pure data here; the logic lives in game/ecosystem.ts.
 import type { Timbre } from '../audio/engine';
 import type { WonderKind } from './gen';
+import type { Theme } from './themes';
 
 export type KinRule = 'hive' | 'hollow' | 'thicket' | 'reedbed' | 'garden' | 'lanterns';
 export type VisitorKind = 'rabbit' | 'hedgehog' | 'duck';
@@ -38,7 +39,7 @@ export const KIN_INFO: Record<KinRule, KinInfo> = {
     recipe: '💧🌿🌿', timbre: 'glass', visitor: 'duck',
   },
   garden: {
-    name: 'Cottage Garden', line: 'Flowers all around a cottage.', riddle: 'A home among flowers.',
+    name: 'Cottage Garden', line: 'Flowers all around a home.', riddle: 'A home among flowers.',
     recipe: '🏡🌷', timbre: 'celesta', visitor: 'rabbit',
   },
   lanterns: {
@@ -56,12 +57,34 @@ export const KIN_WONDERS: Record<number, Partial<Record<KinRule, WonderKind>>> =
 };
 
 /** These stay hidden under a random tile: lucky finds while raining. */
-export const LUCKY_WONDERS = new Set<WonderKind>(['kite', 'stag', 'float', 'bell']);
+export const LUCKY_WONDERS = new Set<WonderKind>(['kite', 'stag', 'float', 'bell', 'bottle']);
+
+/** Far islands: each theme has its own wonders, met through a kinship on any island of that theme. */
+export const THEME_WONDERS: Partial<Record<Theme, Partial<Record<KinRule, WonderKind>>>> = {
+  autumn: { thicket: 'squirrel', garden: 'jacklantern' },
+  frost: { thicket: 'hare', reedbed: 'crane' },
+  ember: { hollow: 'salamander', hive: 'firemoth' },
+  oasis: { thicket: 'fennec', reedbed: 'ibis' },
+  meadow: { hollow: 'tortoise' },
+  forest: { hollow: 'tortoise' },
+  lakes: { hollow: 'tortoise' },
+  highland: { hollow: 'tortoise' },
+};
+
+/** The wonder (if any) a kinship brings on island ii. Far-island wonders don't repeat once kept. */
+export function kinWonderFor(ii: number, theme: Theme, rule: KinRule, collected: Set<WonderKind>): WonderKind | undefined {
+  if (ii in KIN_WONDERS) return KIN_WONDERS[ii][rule];
+  const w = THEME_WONDERS[theme]?.[rule];
+  return w && !collected.has(w) ? w : undefined;
+}
 
 /** The kinship that brings a wonder, if any. */
 export function wonderSource(kind: WonderKind): { island: number; rule: KinRule } | null {
   for (const [island, map] of Object.entries(KIN_WONDERS)) {
     for (const [rule, w] of Object.entries(map)) if (w === kind) return { island: Number(island), rule: rule as KinRule };
+  }
+  for (const map of Object.values(THEME_WONDERS)) {
+    for (const [rule, w] of Object.entries(map ?? {})) if (w === kind) return { island: -1, rule: rule as KinRule };
   }
   return null;
 }

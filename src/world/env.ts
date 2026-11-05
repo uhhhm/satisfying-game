@@ -129,6 +129,9 @@ export class Environment {
   tod = 0.33;
   night = 0;
   vitality = 0; // 0 barren .. 1 lush, clears the overcast
+  /** a gentle per-island sky tint (island themes), eased by the game */
+  tint = new THREE.Color('#ffffff');
+  tintAmt = 0;
   sunDir = new THREE.Vector3(0.5, 0.8, 0.3);
   maskCanvas: HTMLCanvasElement;
   maskTex: THREE.CanvasTexture;
@@ -214,6 +217,7 @@ export class Environment {
     tg.globalCompositeOperation = 'lighter';
     for (const isl of islands) {
       if (Math.abs(isl.cx - (R.x + R.z / 2)) > R.z * 0.6 + 15 || Math.abs(isl.cz - (R.y + R.z / 2)) > R.z * 0.6 + 15) continue;
+      if (isl.settled) continue;
       const sub = isl.rise.target < -0.5;
       // risen land → red channel (foam + shallows), submerged → green (a faint hint only)
       tg.fillStyle = sub ? 'rgb(0,255,0)' : 'rgb(255,0,0)';
@@ -271,6 +275,15 @@ export class Environment {
     C.deep.lerp(new THREE.Color('#7f98a6'), oc * 0.8);
     C.shallow.lerp(new THREE.Color('#b9c8c6'), oc * 0.8);
     C.sunI *= 1 - oc * 0.25;
+    // the island's theme tints the sky, haze and shallows a touch
+    if (this.tintAmt > 0.001) {
+      const k = this.tintAmt * (1 - this.night * 0.6);
+      C.top.lerp(this.tint, k * 0.6);
+      C.hor.lerp(this.tint, k);
+      C.fog.lerp(this.tint, k * 0.8);
+      C.shallow.lerp(this.tint, k * 0.35);
+      C.hemiS.lerp(this.tint, k * 0.4);
+    }
 
     const az = t * Math.PI * 2 + 0.6;
     this.sunDir.set(Math.cos(az) * 0.8, 0.25 + C.elev * 0.9, Math.sin(az) * 0.6 + 0.4).normalize();

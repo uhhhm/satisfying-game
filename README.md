@@ -89,7 +89,25 @@ swing, wells, a lighthouse whose beam turns at night, a pier with a bobbing boat
 
 Each restored island raises the next one out of the sea, and gives you a **little cloud** that
 trails behind like a duckling and rains where you rain (up to four). After Lanternfell the days
-start to turn on their own, and the archipelago keeps growing outward with new procedural islands.
+start to turn on their own, and the archipelago keeps growing outward, forever.
+
+**Endless mode.** Beyond Lanternfell each new island rises a short glide from the last, a little
+larger each time. Four new kinds of shore appear among the familiar ones, each with its own palette,
+plants, landmarks, sky tint, musical key and ambience:
+
+| Theme | Look | Plants | Landmarks | Sound |
+|---|---|---|---|---|
+| Autumn | amber and rust | maples, pumpkins, falling leaves | barns, haystacks | A, rustling leaves |
+| Frost | pale mint and white | snow-capped pines, drifting snow | igloos (with a snowman), cairns | F, ice tinkles, more wind |
+| Ember | black sand and moss | ferns, glowing caps, steaming hot springs, rising sparks | stilt huts | C, bubbling springs |
+| Oasis | dunes around a green heart | palms, flowering cacti | tents | E, cicadas through the day |
+
+The music moves to an island's key on the next chord when you travel there. Each far theme has two
+wonders of its own (a red squirrel, a snow hare, an ember newt, a fennec…), every other far island
+can bring the wandering tortoise, and any far island may hide a message in a bottle. Gardens grow
+around any home: barns, tents, stilt huts and igloos as well as cottages. To keep things light, only the
+four authored islands and the four newest far islands stay loaded; older ones settle into the journal,
+which counts every island restored.
 
 **Small things.** Leave the cloud alone for a while and it dozes off (eyes closed, slow breathing,
 little bubbles); it wakes with a bounce. A resting cloud still drips now and then. Tappable things
@@ -162,8 +180,9 @@ hints, lapping foam and sea ripples, and wind-swayed vegetation.
 src/
   core/      config (all tunables), springs/noise/rng, hex math, shared shader patches
   audio/     engine (buses, reverb, instrument voices), generative music, sfx + ambience
-  world/     island generation, island rendering + tile springs, instanced decor, models,
-             landmarks, creatures, critters, wonders, kinship data, sky/sea/lighting
+  world/     island generation (+ endless layout), island themes, island rendering + tile springs,
+             instanced decor, models, landmarks, creatures, critters, wonders, kinship data,
+             sky/sea/lighting
   fx/        particles, rain, post-processing
   game/      game orchestration + progression, ecosystem (kinships, visitors), cloud(s),
              camera rig, input, save
