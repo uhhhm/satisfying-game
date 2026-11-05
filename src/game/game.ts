@@ -475,6 +475,15 @@ export class Game {
       return;
     }
     this.raycaster.setFromCamera(this.input.ndc, this.rig.camera);
+    if (!this.input.holding) {
+      this.wonders.hover(this.raycaster.ray);
+      this.creatures.hover(this.raycaster.ray);
+      for (const gf of this.goldenFlowers) {
+        const p = this.decor.position(gf.ref);
+        p.y += 0.3;
+        if (Math.random() < 0.06 && this.raycaster.ray.distanceSqToPoint(p) < 0.35 * 0.35) this.decor.kick(gf.ref, 1.2);
+      }
+    }
     let hit: THREE.Vector3 | null = null;
     let dist = Infinity;
     for (const isl of this.islands) {

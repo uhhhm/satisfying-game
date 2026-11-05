@@ -2,6 +2,8 @@
 
 *a little rain goes a long way*
 
+![Hearthmeadow, nearly restored](docs/screenshot.png)
+
 You are a small raincloud with a face, drifting over a grey, parched archipelago. Hold to rain.
 Soaked hex tiles darken, tremble, then **pop** into meadow, forest, marsh and blossom, and every
 pop is a note in a song you're writing without trying. Over a few hours the islands fill with
@@ -34,6 +36,7 @@ npm run preview
 ```
 
 It needs a browser with WebGL2 and Web Audio (any recent Chrome, Edge, Firefox or Safari).
+URL flags: `?debug` opens the tuning panel, `?lowfx` forces lighter graphics.
 
 ## Controls
 
@@ -62,7 +65,9 @@ Settings include *rain without holding* (for one-handed or trackpad play) and *l
   and then it pops. You get a squash-and-stretch hop, a colour bloom with a flash, neighbours
   nudged, grass and flowers springing out in a stagger, a petal and leaf burst, sparkles, a tiny
   camera nod, a soft *thup* and a quantized note.
-- Keep raining on living tiles and they deepen: grass, then flowers, shrubs and mushrooms, then trees.
+- Keep raining on living tiles and they deepen: grass, then flowers, shrubs and mushrooms, then
+  trees. The plants under the cloud jiggle as the drops hit them.
+- About one bloom in 25 is a *lucky* one: an extra glittering chime and a butterfly.
 - Forgiving input: the rain disc is wide, nearly-soaked tiles soak faster, and a resting cursor
   lets the rain drift toward the tile closest to finishing. Each bloom gives its wet neighbours a
   sip, so soaked areas finish in chain reactions. A tap gives a concentrated splash.
@@ -85,6 +90,10 @@ swing, wells, a lighthouse whose beam turns at night, a pier with a bobbing boat
 Each restored island raises the next one out of the sea, and gives you a **little cloud** that
 trails behind like a duckling and rains where you rain (up to four). After Lanternfell the days
 start to turn on their own, and the archipelago keeps growing outward with new procedural islands.
+
+**Small things.** Leave the cloud alone for a while and it dozes off (eyes closed, slow breathing,
+little bubbles); it wakes with a bounce. A resting cloud still drips now and then. Tappable things
+wiggle when your pointer passes over them. Finishing an island brings a petal shower.
 
 **Discoveries.** Twelve hidden **wonders** (a sleeping fox, a lost kite, a fairy ring, an old owl, a
 white stag, a heron, a glass float, a river turtle, a stone lantern, a moon lily, a shrine bell…)

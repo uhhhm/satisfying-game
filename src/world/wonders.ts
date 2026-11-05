@@ -33,6 +33,7 @@ interface W {
   collected: boolean;
   t: number;
   glow: THREE.MeshStandardMaterial[];
+  hoverT: number;
 }
 
 const M = (c: string, o: Partial<THREE.MeshStandardMaterialParameters> = {}) =>
@@ -58,7 +59,7 @@ export class Wonders {
     });
     this.g.scene.add(g);
     const collected = this.g.collected.has(t.wonder);
-    const w: W = { kind: t.wonder, ii, tile, g, anim, s: new Spring(instant ? 1 : 0, 120, 8), bounce: new Spring(0, 200, 9), collected, t: 0, glow };
+    const w: W = { kind: t.wonder, ii, tile, g, anim, s: new Spring(instant ? 1 : 0, 120, 8), bounce: new Spring(0, 200, 9), collected, t: 0, glow, hoverT: -10 };
     w.s.target = 1;
     g.scale.setScalar(instant ? 1 : 0.0001);
     this.list.push(w);
@@ -71,6 +72,19 @@ export class Wonders {
           this.g.glow.emit({ x: g.position.x, y: g.position.y + 0.3, z: g.position.z, vx: randSoft() * 1.5, vy: rand(0.5, 2), vz: randSoft() * 1.5, life: 1.4, size: 0.16, color: '#fff6d0', shape: SHAPE.sparkle, drag: 2 });
         }
       });
+    }
+  }
+
+  /** A little "notice me" wiggle when the pointer passes over. */
+  hover(ray: THREE.Ray) {
+    for (const w of this.list) {
+      const p = w.g.position.clone();
+      p.y += 0.35;
+      if (ray.distanceSqToPoint(p) < 0.6 * 0.6 && this.g.time - w.hoverT > 1.2) {
+        w.hoverT = this.g.time;
+        w.bounce.vel += 2.5;
+        if (!w.collected) this.g.audio.note(this.g.audio.now + 0.01, 86, 0.25, 'glass', { pan: this.g.pan(p.x, p.y, p.z) });
+      }
     }
   }
 

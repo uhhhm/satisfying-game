@@ -222,6 +222,14 @@ export class Creatures {
     if (!instant) this.g.sfx.baa(this.g.pan(p.x, p.y, p.z), rand(0.95, 1.15));
   }
 
+  hover(ray: THREE.Ray) {
+    for (const s of this.sheep) {
+      const p = s.g.position.clone();
+      p.y += 0.3;
+      if (ray.distanceSqToPoint(p) < 0.4 * 0.4 && s.sq.settled && s.jump <= 0) s.sq.vel = -3;
+    }
+  }
+
   tryTap(ray: THREE.Ray): boolean {
     for (const s of this.sheep) {
       const p = s.g.position.clone();
@@ -404,14 +412,14 @@ export class Creatures {
     // fireflies drift up from living tiles at dusk/night
     if (night > 0.2) {
       const isl = g.islands[g.focus];
-      const n = dt * 14 * night;
+      const n = dt * 18 * night;
       for (let k = 0; k < n + (Math.random() < n % 1 ? 1 : 0); k++) {
         const i = Math.floor(Math.random() * isl.n);
         if (isl.stage[i] < 1) continue;
         const p = isl.worldPos(i, new THREE.Vector3());
         g.glow.emit({
           x: p.x + randSoft() * 0.7, y: p.y + rand(0.15, 0.6), z: p.z + randSoft() * 0.7, vx: randSoft() * 0.15, vy: rand(0.05, 0.2), vz: randSoft() * 0.15,
-          life: rand(3, 5), size: rand(0.08, 0.13), color: pick(['#fff1a8', '#e8ffb0', '#ffe39a']), alpha: 0.9, shape: SHAPE.dot, drag: 0.4, flutter: 0.25,
+          life: rand(3, 5), size: rand(0.12, 0.2), color: pick(['#fff1a8', '#e8ffb0', '#ffe39a']), alpha: 1, shape: SHAPE.dot, drag: 0.4, flutter: 0.25,
         });
       }
     }

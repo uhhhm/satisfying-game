@@ -282,7 +282,7 @@ export class Environment {
     this.seaU.uDeep.value.copy(C.deep);
     this.seaU.uShallow.value.copy(C.shallow);
     this.seaU.uSunCol.value.copy(C.sun).multiplyScalar(0.6 * (1 - this.night * 0.7));
-    this.seaU.uFoam.value.set('#f4f8f6').lerp(new THREE.Color('#9fb0cf'), this.night * 0.6);
+    this.seaU.uFoam.value.set('#f4f8f6').lerp(new THREE.Color('#5d6d92'), this.night * 0.85);
     this.seaU.uNight.value = this.night;
     this.fog.color.copy(C.fog);
     this.sun.color.copy(C.sun);
